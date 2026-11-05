@@ -30,7 +30,7 @@
 ### macOS / Linux
 
 ```bash
-git clone <你的 GitHub 仓库地址>
+git clone https://github.com/xinshouzhanlong-lgtm/-ZhiMed.git guide-agent
 cd guide-agent
 python3 -m venv .venv
 source .venv/bin/activate
