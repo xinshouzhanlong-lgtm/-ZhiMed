@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>院内智能导诊</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="bar" id="statusBar">
+  <div class="bar-left">
+    <span class="dot" id="dot"></span>
+    <span id="statusText">正在加载…</span>
+  </div>
+  <div class="bar-right" id="clock"></div>
+</header>
+
+<div class="warn" id="degradedBar" hidden>
+  当前排班为人工维护数据，可能不是最新。请以现场导医为准。
+</div>
+
+<!-- 主屏常驻提问条：语音入口必须一眼可见，不能只靠右下角悬浮按钮 -->
+<div class="askwrap">
+  <form class="askbar" id="askBarForm">
+    <button type="button" class="micbtn" id="micBtn" aria-label="语音输入">
+      <span class="mic-ico">🎤</span>
+      <span class="mic-label">语音</span>
+    </button>
+    <input id="barInput" placeholder="说或输入想问的，例如：心内科在几楼" autocomplete="off" />
+    <button type="submit" class="sendbtn">查询</button>
+  </form>
+  <div class="askhint" id="askHint">点「语音」说话，或直接打字提问 · 也可以问「今天有哪些科室出诊」</div>
+</div>
+
+<main>
+  <section class="head">
+    <h1>今日出诊科室</h1>
+    <div class="sub" id="todayLine"></div>
+  </section>
+  <section class="grid" id="grid"></section>
+  <section class="empty" id="emptyHint" hidden>今天暂时没有查询到出诊科室。</section>
+</main>
+
+<button class="fab" id="voiceBtn" aria-label="语音提问">
+  <span class="mic">🎤</span><span class="fab-text">按住或点击说话</span>
+</button>
+
+<div class="drawer" id="drawer" hidden>
+  <div class="drawer-head">
+    <span class="drawer-title">语音导诊</span>
+    <button class="icon-btn" id="closeDrawer" aria-label="关闭">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <div class="hint">可以这样问：「心内科在几楼」「今天有哪些科室出诊」「张明医生什么时候坐诊」</div>
+  </div>
+  <div class="drawer-actions">
+    <button class="bigmic" id="bigMic" type="button">🎤 点一下开始说话</button>
+  </div>
+  <form class="ask" id="askForm">
+    <input id="askInput" placeholder="也可以直接打字提问…" autocomplete="off" />
+    <button type="submit">发送</button>
+  </form>
+  <div class="disclaimer" id="disclaimer"></div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="app.js"></script>
+<script src="voice.js"></script>
+</body>
+</html>

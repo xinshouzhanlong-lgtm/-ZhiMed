@@ -1,0 +1,33 @@
+{
+  "_comment": "source_policy 四态：api_only / manual_only / api_then_manual / manual_override。scope 为 dept_id 或 \"*\"，科室级覆盖全局。",
+  "default": {
+    "mode": "api_then_manual",
+    "timeout_ms": 2000,
+    "max_stale_ms": 21600000
+  },
+  "breaker": {
+    "failure_threshold": 3,
+    "open_ms": 60000
+  },
+  "overrides": [
+    { "scope": "dept-cardio", "mode": "api_only" },
+    { "scope": "dept-checkup", "mode": "manual_only" }
+  ],
+  "endpoints": {
+    "_comment": "mode: off = 模拟 HIS 不可用 | fixture = 读本地快照（占位实现）| http = 真实对接（未实现，返回 NOT_CONFIGURED）",
+    "schedule_api": {
+      "mode": "fixture",
+      "fixture": "data/fixtures/schedule_api.json",
+      "simulate": "ok",
+      "base_url": "",
+      "auth_env": "GUIDE_HIS_APP_SECRET",
+      "timeout_ms": 2000
+    },
+    "doctor_api": {
+      "mode": "fixture",
+      "fixture": "data/fixtures/doctors.json",
+      "base_url": "",
+      "auth_env": "GUIDE_HIS_APP_SECRET"
+    }
+  }
+}

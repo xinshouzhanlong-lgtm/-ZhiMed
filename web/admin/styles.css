@@ -1,0 +1,74 @@
+:root {
+  --bg: #f4f6f9; --card: #fff; --line: #e3e8ef; --text: #1b2432;
+  --muted: #6b7789; --brand: #1a6fd4; --brand-soft: #e8f1fd;
+  --ok: #1f9d55; --warn: #b26a00; --err: #c73a3a; --radius: 12px;
+}
+* { box-sizing: border-box; }
+/* 作者样式里的 display 会覆盖 [hidden] 的默认 display:none，统一兜住 */
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--bg); color: var(--text); font-size: 14px;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+.top {
+  display: flex; align-items: center; gap: 20px; background: #fff;
+  border-bottom: 1px solid var(--line); padding: 12px 24px; position: sticky; top: 0; z-index: 5;
+}
+.tabs { display: flex; gap: 6px; }
+.tab {
+  border: 1px solid transparent; background: none; padding: 7px 14px; border-radius: 8px;
+  cursor: pointer; color: var(--muted); font-size: 14px;
+}
+.tab.active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+.who { margin-left: auto; color: var(--muted); font-size: 13px; }
+
+.login { max-width: 360px; margin: 80px auto; background: #fff; padding: 28px; border-radius: var(--radius); border: 1px solid var(--line); }
+.login h1 { font-size: 18px; margin: 0 0 6px; }
+.login form { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+input, select, button, textarea { font-size: 14px; font-family: inherit; }
+input[type=text], input[type=password], input:not([type]), select {
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; width: 100%; background: #fff;
+}
+button {
+  padding: 9px 16px; border: none; border-radius: 8px; background: var(--brand); color: #fff;
+  cursor: pointer; white-space: nowrap;
+}
+button.ghost { background: #fff; color: var(--brand); border: 1px solid var(--brand); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.err { color: var(--err); font-size: 13px; margin-top: 10px; min-height: 18px; }
+.muted { color: var(--muted); }
+.conf { color: var(--muted); font-size: 12px; }
+
+main { max-width: 960px; margin: 0 auto; padding: 24px; }
+.panel { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+.panel h2 { font-size: 17px; margin: 0 0 6px; }
+.panel h3 { font-size: 15px; margin: 22px 0 8px; }
+.row { display: flex; gap: 12px; align-items: flex-end; margin-top: 14px; flex-wrap: wrap; }
+.row label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.row label.grow { flex: 1; min-width: 220px; }
+.actions { display: flex; gap: 10px; margin-top: 16px; }
+
+.diffbox { margin-top: 20px; border: 1px solid #f0dcb4; background: #fffdf7; border-radius: var(--radius); padding: 16px; }
+.diffhead { display: flex; justify-content: space-between; font-size: 13px; color: var(--warn); margin-bottom: 10px; font-weight: 600; }
+.diffbox pre {
+  background: #1e2430; color: #d8e0ea; padding: 14px; border-radius: 8px; overflow-x: auto;
+  font-size: 12.5px; line-height: 1.6; font-family: Consolas, "Courier New", monospace;
+}
+.versions { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 14px; }
+.versions summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.vitem { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 13px; align-items: center; }
+.vitem span { color: var(--muted); }
+
+.photoarea { display: flex; gap: 24px; margin-top: 18px; align-items: flex-start; }
+.preview {
+  width: 120px; height: 120px; border-radius: 12px; background: var(--brand-soft);
+  color: var(--brand); display: flex; align-items: center; justify-content: center;
+  font-size: 13px; overflow: hidden; flex-shrink: 0; border: 1px solid var(--line);
+}
+.preview img { width: 100%; height: 100%; object-fit: cover; }
+.uploadbox { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.chk { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.kv { display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; font-size: 13px; margin-top: 12px; }
+.kv .k { color: var(--muted); }
+.ok { color: var(--ok); } .warnc { color: var(--warn); } .errc { color: var(--err); }

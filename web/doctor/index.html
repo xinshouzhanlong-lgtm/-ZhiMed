@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>医生照片上传</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<main>
+  <h1 id="title">正在验证链接…</h1>
+  <p class="muted" id="sub"></p>
+
+  <div class="card" id="card" hidden>
+    <div class="avatar" id="avatar">—</div>
+    <div class="who" id="who"></div>
+    <input type="file" id="file" accept="image/jpeg,image/png,image/webp" />
+    <button id="uploadBtn">上传 / 更换我的照片</button>
+    <p class="tip">本人上传即视为同意在院内导诊系统展示该照片。链接在首次上传成功后自动失效。</p>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card err" id="errBox" hidden></div>
+</main>
+<script src="upload.js"></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{
+  "port": 8787,
+  "llm": {
+    "enabled": false,
+    "base_url": "http://127.0.0.1:11434/v1",
+    "model": "qwen2.5:7b",
+    "timeout_ms": 4000,
+    "max_tokens_per_turn": 3000
+  },
+  "rag": {
+    "enabled": false,
+    "knowledge_dir": "data/knowledge/approved",
+    "index_dir": "data/rag_index",
+    "embedding_model": "BAAI/bge-m3",
+    "chunk_size": 700,
+    "chunk_overlap": 100,
+    "top_k": 4,
+    "min_relevance": 0.25
+  },
+  "asr": {
+    "provider": "webspeech",
+    "min_confidence": 0.85
+  },
+  "limits": {
+    "per_device_per_min": 20,
+    "turn_timeout_ms": 6000,
+    "max_tool_calls": 3,
+    "admin_max_fail": 5,
+    "admin_lock_minutes": 5
+  },
+  "photo": {
+    "max_bytes": 10485760,
+    "size": 480,
+    "thumb": 192
+  },
+  "magic_link": {
+    "ttl_hours": 72
+  },
+  "public_base_url": "http://127.0.0.1:8787",
+  "disclaimer": "本系统仅提供就诊指引，不提供诊断与用药建议。请以现场导医与医生意见为准。"
+}

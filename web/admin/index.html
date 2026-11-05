@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>导诊后台 · 管理端</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="top">
+  <strong>导诊后台</strong>
+  <nav class="tabs">
+    <button class="tab active" data-panel="panelMd">科室地址</button>
+    <button class="tab" data-panel="panelDoctor">医生照片</button>
+    <button class="tab" data-panel="panelSource">数据源</button>
+  </nav>
+  <span class="who" id="who"></span>
+</header>
+
+<section id="login" class="login">
+  <h1>管理端登录</h1>
+  <p class="muted">默认账号 admin / admin123，首次登录后请立即修改。</p>
+  <form id="loginForm">
+    <input id="username" placeholder="账号" value="admin" autocomplete="username" />
+    <input id="password" type="password" placeholder="密码" autocomplete="current-password" />
+    <button type="submit">登录</button>
+  </form>
+  <div class="err" id="loginErr"></div>
+</section>
+
+<main id="app" hidden>
+  <!-- 科室地址 -->
+  <section class="panel" id="panelMd">
+    <h2>科室地址维护</h2>
+    <p class="muted">修改会先生成提案并展示 diff，确认后才写入 <code>data/departments.md</code>。</p>
+
+    <div class="row">
+      <label>科室
+        <select id="deptSel"></select>
+      </label>
+      <label>字段
+        <select id="fieldSel">
+          <option value="location">位置</option>
+          <option value="rooms">诊室</option>
+          <option value="serviceScope">服务范围</option>
+          <option value="phone">电话</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row">
+      <label class="grow">新值
+        <input id="newValue" placeholder="例如：门诊楼 4F 东侧" />
+      </label>
+      <button id="voiceBtn" class="ghost" type="button">🎤 语音录入</button>
+      <span class="conf" id="asrConf"></span>
+    </div>
+
+    <div class="actions">
+      <button id="proposeBtn">生成提案（不写入）</button>
+    </div>
+
+    <div class="diffbox" id="diffBox" hidden>
+      <div class="diffhead">
+        <span>确认弹层 · 请核对差异后再保存</span>
+        <span class="conf" id="diffConf"></span>
+      </div>
+      <pre id="diffText"></pre>
+      <div class="actions">
+        <button class="ghost" id="cancelBtn">取消</button>
+        <button id="commitBtn">确认修改</button>
+      </div>
+    </div>
+
+    <details class="versions">
+      <summary>历史版本 / 回滚</summary>
+      <div id="versions"></div>
+    </details>
+  </section>
+
+  <!-- 医生照片 -->
+  <section class="panel" id="panelDoctor" hidden>
+    <h2>医生照片</h2>
+    <p class="muted">服务端统一处理为 480×480 与 192×192 的 WebP；文件名即内容 hash，旧图不物理删除。</p>
+    <div class="row">
+      <label>医生
+        <select id="doctorSel"></select>
+      </label>
+      <button id="linkBtn" type="button">生成/查看直链</button>
+    </div>
+    <div class="row" id="linkRow" hidden>
+      <input id="linkOut" readonly />
+      <button class="ghost" id="copyLink" type="button">复制</button>
+    </div>
+
+    <div class="photoarea">
+      <div class="preview" id="photoPreview">无照片</div>
+      <div class="uploadbox">
+        <input type="file" id="photoFile" accept="image/jpeg,image/png,image/webp" />
+        <label class="chk"><input type="checkbox" id="consentAck" /> 已取得该医生肖像使用授权（代传必勾）</label>
+        <button id="uploadBtn">上传</button>
+        <div class="muted" id="uploadMsg"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 数据源 -->
+  <section class="panel" id="panelSource" hidden>
+    <h2>数据源健康与冲突</h2>
+    <div id="healthBox" class="kv"></div>
+    <h3>待裁决冲突</h3>
+    <div id="conflictBox" class="muted">无</div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

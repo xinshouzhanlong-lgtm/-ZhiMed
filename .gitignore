@@ -1,0 +1,32 @@
+# 依赖与虚拟环境（不要提交）
+.venv/
+venv/
+env/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 运行时产物（首次启动自动生成）
+data/guide.db
+data/guide.db-shm
+data/guide.db-wal
+data/.secrets.json
+data/rag_index/
+data/knowledge/approved/*
+!data/knowledge/approved/.gitkeep
+data/media/doctors/*
+data/*.md.lock
+data/*.md.tmp
+
+# 编辑器与系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 保留目录占位
+!data/media/doctors/.gitkeep

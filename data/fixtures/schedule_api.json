@@ -1,0 +1,12 @@
+{
+  "_comment": "HIS 排班接口的占位快照。字段名故意与真实 HIS 不同（dept_code/dept_name/floor_room），用来验证适配器层的字段映射；真实对接时只需改 schedule_api.py 的 _map_row()。",
+  "code": 0,
+  "msg": "ok",
+  "data": {
+    "list": [
+      { "dept_code": "dept-cardio", "dept_name": "心血管内科", "campus": "本部", "floor_room": "门诊楼 3F 东侧", "doctor_cnt": 4, "state": "on_duty" },
+      { "dept_code": "dept-resp", "dept_name": "呼吸内科", "campus": "本部", "floor_room": "门诊楼 3F 西侧", "doctor_cnt": 3, "state": "on_duty" },
+      { "dept_code": "dept-ortho", "dept_name": "骨科", "campus": "本部", "floor_room": "门诊楼 2F 北侧", "doctor_cnt": 2, "state": "on_duty" }
+    ]
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "_comment": "医生信息的占位快照（HIS 医生接口未接入）。schema 与文档 DoctorProfile 对齐，字段名用下划线风格。",
+  "doctors": [
+    {
+      "doctor_id": "doc-zhangming",
+      "name": "张明",
+      "title": "主任医师",
+      "specialty": "冠心病介入、高血压综合管理",
+      "department_id": "dept-cardio",
+      "schedule": [
+        { "date": "*", "period": "上午", "room": "3F-12" },
+        { "date": "*", "period": "下午", "room": "3F-12" }
+      ]
+    },
+    {
+      "doctor_id": "doc-lihong",
+      "name": "李红",
+      "title": "副主任医师",
+      "specialty": "心律失常、心力衰竭随访",
+      "department_id": "dept-cardio",
+      "schedule": [{ "date": "*", "period": "下午", "room": "3F-14" }]
+    },
+    {
+      "doctor_id": "doc-wangqiang",
+      "name": "王强",
+      "title": "主治医师",
+      "specialty": "高血压、血脂异常",
+      "department_id": "dept-cardio",
+      "schedule": [{ "date": "*", "period": "上午", "room": "3F-16" }]
+    },
+    {
+      "doctor_id": "doc-zhaomin",
+      "name": "赵敏",
+      "title": "副主任医师",
+      "specialty": "冠心病、心脏康复",
+      "department_id": "dept-cardio",
+      "schedule": [
+        { "date": "*", "period": "上午", "room": "3F-18" },
+        { "date": "*", "period": "夜间", "room": "3F-18" }
+      ]
+    },
+    {
+      "doctor_id": "doc-chenli",
+      "name": "陈立",
+      "title": "主任医师",
+      "specialty": "慢阻肺、哮喘规范化治疗",
+      "department_id": "dept-resp",
+      "schedule": [{ "date": "*", "period": "上午", "room": "3F-02" }]
+    },
+    {
+      "doctor_id": "doc-sunyu",
+      "name": "孙宇",
+      "title": "主治医师",
+      "specialty": "肺部感染、肺结节随访",
+      "department_id": "dept-resp",
+      "schedule": [{ "date": "*", "period": "下午", "room": "3F-04" }]
+    },
+    {
+      "doctor_id": "doc-zhoujie",
+      "name": "周杰",
+      "title": "主任医师",
+      "specialty": "关节置换、运动损伤",
+      "department_id": "dept-ortho",
+      "schedule": [{ "date": "*", "period": "上午", "room": "2F-20" }]
+    },
+    {
+      "doctor_id": "doc-wulin",
+      "name": "吴琳",
+      "title": "副主任医师",
+      "specialty": "脊柱疾病、骨质疏松",
+      "department_id": "dept-ortho",
+      "schedule": [{ "date": "*", "period": "下午", "room": "2F-22" }]
+    },
+    {
+      "doctor_id": "doc-hufang",
+      "name": "胡芳",
+      "title": "主治医师",
+      "specialty": "健康体检、体检报告初筛",
+      "department_id": "dept-checkup",
+      "schedule": [{ "date": "*", "period": "上午", "room": "1F-05" }]
+    }
+  ]
+}
