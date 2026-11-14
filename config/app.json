@@ -33,9 +33,5 @@
     "size": 480,
     "thumb": 192
   },
-  "magic_link": {
-    "ttl_hours": 72
-  },
-  "public_base_url": "http://127.0.0.1:8787",
   "disclaimer": "本系统仅提供就诊指引，不提供诊断与用药建议。请以现场导医与医生意见为准。"
 }

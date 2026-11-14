@@ -63,7 +63,7 @@ async def handle_turn(input_: TurnInput, ctx: TurnContext) -> TurnOutput:
 
     try:
         async with asyncio.timeout(float(settings.limits.get("turn_timeout_ms", 6000)) / 1000):
-            intent, slots, path = await intent_mod.classify(raw, session)
+            intent, slots, path = await intent_mod.classify(raw, session)#返回意图、槽位、路径
 
             # 打转检测：同指纹连续 2 次 → 打断
             fp = _fp(intent.value, slots)

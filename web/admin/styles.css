@@ -35,6 +35,7 @@ button {
   cursor: pointer; white-space: nowrap;
 }
 button.ghost { background: #fff; color: var(--brand); border: 1px solid var(--brand); }
+button.danger { background: #fff; color: var(--err); border: 1px solid var(--err); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 .err { color: var(--err); font-size: 13px; margin-top: 10px; min-height: 18px; }
 .muted { color: var(--muted); }
@@ -68,7 +69,17 @@ main { max-width: 960px; margin: 0 auto; padding: 24px; }
 }
 .preview img { width: 100%; height: 100%; object-fit: cover; }
 .uploadbox { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.uploadbox .actions { margin-top: 0; flex-wrap: wrap; }
+.photo-tip { margin: 0; font-size: 12px; line-height: 1.6; }
 .chk { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
 .kv { display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; font-size: 13px; margin-top: 12px; }
 .kv .k { color: var(--muted); }
 .ok { color: var(--ok); } .warnc { color: var(--warn); } .errc { color: var(--err); }
+
+@media (max-width: 600px) {
+  .top { gap: 10px; padding: 12px; flex-wrap: wrap; }
+  .tabs { order: 3; width: 100%; }
+  main { padding: 16px; }
+  .photoarea { flex-direction: column; }
+  .uploadbox { width: 100%; }
+}

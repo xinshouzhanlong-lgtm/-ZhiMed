@@ -294,13 +294,13 @@ class CommitReceipt(BaseModel):
 
 # ─────────────────────────── 认证 ───────────────────────────
 
-AuthEntry = Literal["magic_link", "password"]
+AuthEntry = Literal["password"]
 
 
 class Principal(BaseModel):
     model_config = ConfigDict(frozen=True)
     sub: str
-    role: Literal["admin", "doctor"]
+    role: Literal["admin"]
     dept_scope: list[str] = Field(default_factory=list)
     display_name: str | None = None
     entry: AuthEntry = "password"
@@ -308,27 +308,14 @@ class Principal(BaseModel):
     exp: int = 0
 
 
-class MagicLinkClaims(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    doctor_id: str
-    jti: str
-    exp: int
-
-
-class MagicLinkToken(BaseModel):
-    token: str
-    claims: MagicLinkClaims
-    url: str
-
-
 # ─────────────────────────── 头像 ───────────────────────────
 
 
 class PhotoWriteGrant(BaseModel):
     subject: str
-    role: Literal["admin", "doctor"]
+    role: Literal["admin"]
     target_doctor_id: str
-    consent_source: Literal["doctor_self", "admin_proxy"]
+    consent_source: Literal["admin_proxy"]
 
 
 class DoctorPhotoRecord(BaseModel):

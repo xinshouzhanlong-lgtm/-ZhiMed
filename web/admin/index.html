@@ -11,7 +11,7 @@
   <strong>导诊后台</strong>
   <nav class="tabs">
     <button class="tab active" data-panel="panelMd">科室地址</button>
-    <button class="tab" data-panel="panelDoctor">医生照片</button>
+    <button class="tab" data-panel="panelDoctor">医生照片维护</button>
     <button class="tab" data-panel="panelSource">数据源</button>
   </nav>
   <span class="who" id="who"></span>
@@ -80,26 +80,26 @@
 
   <!-- 医生照片 -->
   <section class="panel" id="panelDoctor" hidden>
-    <h2>医生照片</h2>
-    <p class="muted">服务端统一处理为 480×480 与 192×192 的 WebP；文件名即内容 hash，旧图不物理删除。</p>
+    <h2>医生照片维护</h2>
+    <p class="muted">由管理员统一上传、更换和移除医生照片。可选择全部医生，包括当天未出诊的医生。</p>
     <div class="row">
       <label>医生
         <select id="doctorSel"></select>
       </label>
-      <button id="linkBtn" type="button">生成/查看直链</button>
     </div>
-    <div class="row" id="linkRow" hidden>
-      <input id="linkOut" readonly />
-      <button class="ghost" id="copyLink" type="button">复制</button>
-    </div>
+    <p class="muted" id="doctorInfo" aria-live="polite"></p>
 
     <div class="photoarea">
       <div class="preview" id="photoPreview">无照片</div>
       <div class="uploadbox">
-        <input type="file" id="photoFile" accept="image/jpeg,image/png,image/webp" />
-        <label class="chk"><input type="checkbox" id="consentAck" /> 已取得该医生肖像使用授权（代传必勾）</label>
-        <button id="uploadBtn">上传</button>
-        <div class="muted" id="uploadMsg"></div>
+        <input type="file" id="photoFile" accept="image/jpeg,image/png,image/webp" aria-label="选择医生照片" />
+        <p class="photo-tip muted">支持 JPEG、PNG、WebP，最大 10MB，短边至少 240px。上传后自动裁剪为方形。</p>
+        <label class="chk"><input type="checkbox" id="consentAck" /> 已取得该医生肖像使用授权</label>
+        <div class="actions">
+          <button id="uploadBtn" type="button" disabled>上传照片</button>
+          <button id="removePhotoBtn" class="danger" type="button" disabled>移除照片</button>
+        </div>
+        <div class="muted" id="uploadMsg" role="status"></div>
       </div>
     </div>
   </section>

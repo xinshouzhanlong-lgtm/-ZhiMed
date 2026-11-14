@@ -14,7 +14,6 @@ PORT="${PORT:-8787}"
 echo "[guide-agent] 服务地址 http://${HOST}:${PORT}/kiosk/"
 echo "  kiosk  : http://${HOST}:${PORT}/kiosk/"
 echo "  admin  : http://${HOST}:${PORT}/admin/   (admin / admin123)"
-echo "  doctor : http://${HOST}:${PORT}/doctor/"
 echo "  health : http://${HOST}:${PORT}/healthz"
 echo ""
 

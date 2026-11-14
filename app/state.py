@@ -72,10 +72,6 @@ CREATE TABLE IF NOT EXISTS staff (
   employee_no TEXT PRIMARY KEY, role TEXT, doctor_id TEXT, dept_scope_json TEXT,
   display_name TEXT, active INTEGER DEFAULT 1, password_hash TEXT, created_at INTEGER
 );
-CREATE TABLE IF NOT EXISTS magic_link (
-  jti TEXT PRIMARY KEY, doctor_id TEXT, issued_by TEXT, created_at INTEGER, expires_at INTEGER,
-  consumed_at INTEGER, revoked_at INTEGER, first_ip_hash TEXT
-);
 CREATE TABLE IF NOT EXISTS auth_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT, principal_sub TEXT, entry TEXT,
   ip_hash TEXT, ua_hash TEXT, created_at INTEGER
@@ -84,7 +80,6 @@ CREATE INDEX IF NOT EXISTS idx_message_session ON message(session_id, created_at
 CREATE INDEX IF NOT EXISTS idx_answer_intent ON answer_record(intent, created_at);
 CREATE INDEX IF NOT EXISTS idx_photo_doctor_status ON doctor_photo(doctor_id, status);
 CREATE INDEX IF NOT EXISTS idx_conflict_date ON data_conflict(date);
-CREATE INDEX IF NOT EXISTS idx_magic_link_doctor ON magic_link(doctor_id, expires_at);
 """
 
 
@@ -277,32 +272,6 @@ def upsert_staff(employee_no: str, role: str, doctor_id: str | None, dept_scope:
         (employee_no, role, doctor_id or "", json.dumps(dept_scope, ensure_ascii=False),
          display_name, password_hash or "", now_ms()),
     )
-
-
-def create_magic_link(jti: str, doctor_id: str, issued_by: str, expires_at: int) -> None:
-    execute(
-        "INSERT INTO magic_link(jti, doctor_id, issued_by, created_at, expires_at, consumed_at,"
-        " revoked_at, first_ip_hash) VALUES (?,?,?,?,?,0,0,'')",
-        (jti, doctor_id, issued_by, now_ms(), expires_at),
-    )
-
-
-def magic_link_row(jti: str) -> dict | None:
-    row = one("SELECT * FROM magic_link WHERE jti=?", (jti,))
-    return dict(row) if row else None
-
-
-def consume_magic_link(jti: str) -> None:
-    execute("UPDATE magic_link SET consumed_at=? WHERE jti=?", (now_ms(), jti))
-
-
-def revoke_magic_links(doctor_id: str) -> int:
-    with tx() as c:
-        cur = c.execute(
-            "UPDATE magic_link SET revoked_at=? WHERE doctor_id=? AND revoked_at=0",
-            (now_ms(), doctor_id),
-        )
-        return cur.rowcount
 
 
 def audit(event: str, sub: str = "", entry: str = "", ip_hash: str = "", ua_hash: str = "") -> None:

@@ -111,10 +111,10 @@ async def _tool_get_doctor(args: dict[str, Any]) -> ToolResult:
     if doc is None:
         return ToolResult(status="not_found", candidates=[])
     ref = photo_ref_for(doc.doctor_id)
-    if ref:
-        from .schemas import DoctorPhotoRef
+    from .schemas import DoctorPhotoRef
 
-        doc.photo = DoctorPhotoRef(**ref)
+    # 照片状态独立于医生接口缓存；每次按数据库刷新，避免移除后仍返回旧头像。
+    doc = doc.model_copy(update={"photo": DoctorPhotoRef(**ref) if ref else None})
     return ToolResult(status="ok", data=doc)
 
 

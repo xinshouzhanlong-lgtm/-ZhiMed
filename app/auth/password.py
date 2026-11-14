@@ -30,7 +30,7 @@ def verify(username: str, password: str) -> Principal:
         raise ValueError("E_LOCKED")
 
     staff = state.staff_by_id(username)
-    if not staff or not staff.get("password_hash"):
+    if not staff or staff["role"] != "admin" or not staff.get("password_hash"):
         state.audit("login_fail", username, "password")
         raise ValueError("E_BAD_CREDENTIALS")
 

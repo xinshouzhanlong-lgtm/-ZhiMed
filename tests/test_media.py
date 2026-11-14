@@ -9,8 +9,8 @@ from PIL import Image
 from app.media import pipeline as mp
 from app.schemas import PhotoWriteGrant
 
-GRANT = PhotoWriteGrant(subject="doc-zhangming", role="doctor",
-                        target_doctor_id="doc-zhangming", consent_source="doctor_self")
+GRANT = PhotoWriteGrant(subject="admin", role="admin",
+                        target_doctor_id="doc-zhangming", consent_source="admin_proxy")
 
 
 def png(w=600, h=600) -> bytes:

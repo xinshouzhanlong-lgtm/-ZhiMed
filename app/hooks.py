@@ -19,7 +19,7 @@ from .settings import settings
 
 TOKEN_TTL_MS = 300_000
 
-Channel = Literal["patient_voice", "admin_web", "doctor_web"]
+Channel = Literal["patient_voice", "admin_web"]
 
 # 通道 → 允许披露/执行的工具白名单（"注册 ≠ 披露 ≠ 授权" 的披露环节）
 DISCLOSURE: dict[str, frozenset[str]] = {
@@ -31,7 +31,6 @@ DISCLOSURE: dict[str, frozenset[str]] = {
         "list_on_duty", "get_department", "search_departments", "get_doctor",
         "get_doctor_schedule", "get_doctor_photo", "propose_md_patch", "commit_md_patch",
     }),
-    "doctor_web": frozenset({"get_doctor", "get_doctor_photo"}),
 }
 
 

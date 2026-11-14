@@ -1,9 +1,8 @@
 """配置装配：config/*.json + 环境变量。
 
 密钥纪律（与设计文档 §9.3 一致）：
-1. jwt_secret 与 magic_link_secret 必须是两个不同密钥；
-2. 只从环境变量读；缺失时开发期自动生成并落盘到 data/.secrets.json（生产必须用环境变量）；
-3. 日志对 secret/token/key/password 打码。
+JWT 密钥从环境变量读取；缺失时开发期自动生成并落盘到 data/.secrets.json。
+生产环境必须通过环境变量注入密钥。
 """
 from __future__ import annotations
 
@@ -24,7 +23,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _ensure_secrets() -> dict[str, str]:
-    """读取或生成开发期密钥。生产环境应通过 GUIDE_JWT_SECRET / GUIDE_MAGIC_LINK_SECRET 注入。"""
+    """读取或生成开发期密钥。生产环境应通过 GUIDE_JWT_SECRET 注入。"""
     store = ROOT / "data" / ".secrets.json"
     data: dict[str, str] = {}
     if store.is_file():
@@ -35,7 +34,6 @@ def _ensure_secrets() -> dict[str, str]:
     changed = False
     for key, env in (
         ("jwt_secret", "GUIDE_JWT_SECRET"),
-        ("magic_link_secret", "GUIDE_MAGIC_LINK_SECRET"),
     ):
         val = os.environ.get(env)
         if val:
@@ -61,20 +59,15 @@ class Settings:
         self.sources_cfg: dict[str, Any] = sources
 
         self.port: int = int(os.environ.get("GUIDE_PORT") or app.get("port", 8787))
-        self.public_base_url: str = os.environ.get("GUIDE_PUBLIC_BASE_URL") or app.get(
-            "public_base_url", f"http://127.0.0.1:{self.port}"
-        )
 
         self.llm: dict[str, Any] = app.get("llm", {})
         self.rag: dict[str, Any] = app.get("rag", {})
         self.asr: dict[str, Any] = app.get("asr", {})
         self.limits: dict[str, Any] = app.get("limits", {})
         self.photo_cfg: dict[str, Any] = app.get("photo", {})
-        self.magic_link_ttl_hours: int = int(app.get("magic_link", {}).get("ttl_hours", 72))
         self.disclaimer: str = app.get("disclaimer", "本系统仅提供就诊指引，不提供诊断与用药建议。")
 
         self.jwt_secret: str = secrets_map["jwt_secret"]
-        self.magic_link_secret: str = secrets_map["magic_link_secret"]
         self.jwt_ttl_minutes: int = 30
 
         # 路径

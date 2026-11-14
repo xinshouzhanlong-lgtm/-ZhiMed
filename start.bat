@@ -12,7 +12,6 @@ set GUIDE_PORT=8787
 echo [guide-agent] starting on http://127.0.0.1:%GUIDE_PORT%
 echo   kiosk : http://127.0.0.1:%GUIDE_PORT%/kiosk/
 echo   admin : http://127.0.0.1:%GUIDE_PORT%/admin/
-echo   doctor: http://127.0.0.1:%GUIDE_PORT%/doctor/
 echo   health: http://127.0.0.1:%GUIDE_PORT%/healthz
 echo.
 

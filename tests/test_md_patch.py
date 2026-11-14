@@ -34,17 +34,19 @@ def test_section_not_found(reset_departments):
 
 
 def test_no_change_rejected(reset_departments):
+    current = next(d["location"] for d in md_patch.departments() if d["department_id"] == "dept-cardio")
     with pytest.raises(md_patch.MdError) as ei:
-        md_patch.propose("dept-cardio", "location", "门诊楼 3F 东侧", src())
+        md_patch.propose("dept-cardio", "location", current, src())
     assert ei.value.code == "E_NO_CHANGE"
 
 
 def test_diff_contains_before_and_after(reset_departments):
     """确认弹层要展示的 diff 必须能看出差异（否则等于没确认）。"""
+    current = next(d["location"] for d in md_patch.departments() if d["department_id"] == "dept-cardio")
     p = md_patch.propose("dept-cardio", "location", "门诊楼 4F 东侧", src())
-    assert "门诊楼 3F 东侧" in p.diff
+    assert current in p.diff
     assert "门诊楼 4F 东侧" in p.diff
-    assert p.before_value == "门诊楼 3F 东侧"
+    assert p.before_value == current
     assert p.after_value == "门诊楼 4F 东侧"
     assert p.base_hash != p.after_hash
 
@@ -95,6 +97,7 @@ def test_commit_idempotent(reset_departments):
 
 
 def test_rollback(reset_departments):
+    before = md_patch.settings.departments_md.read_text(encoding="utf-8")
     p = md_patch.propose("dept-cardio", "location", "门诊楼 4F 东侧", src())
     token = issue_token(p.patch_id, p.after_hash, p.created_at)
     r = md_patch.commit(p.patch_id, token, "admin")
@@ -102,4 +105,4 @@ def test_rollback(reset_departments):
     back = md_patch.rollback(r.version_id, "admin")
     assert back.ok
     text = md_patch.settings.departments_md.read_text(encoding="utf-8")
-    assert "门诊楼 3F 东侧" in text
+    assert text == before

@@ -5,30 +5,28 @@
   /api/schedule/today        今日排班（四态决策后）
   /api/departments/{id}      科室详情
   /api/media/doctors/{name}  头像出图（匿名可读，仅按 hash 精确匹配）
-  /api/auth/*                两入口换取 Principal
-  /api/admin/*               管理端（md 提案/提交/回滚、直链签发、健康度）
-  /api/doctors/{id}/photo    头像上传（admin 代传 / doctor 自传）
+  /api/auth/*                管理员密码登录与身份查询
+  /api/admin/*               管理端（md 提案/提交/回滚、医生照片、健康度）
 """
 from __future__ import annotations
 
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import deps, state
-from .auth import magic_link, password as password_auth
+from .auth import password as password_auth
 from .auth.principal import encode_principal
 from .core_errors import http_status_for
 from .hooks import hooks, issue_token, verify_token  # noqa: F401
 from .media import pipeline as media_pipeline
 from .md import patch as md_patch
-from .runtime import breaker, build_runtime, registry, schedule_api, schedule_manual
+from .runtime import breaker, build_runtime, doctor_api, registry, schedule_api, schedule_manual
 from .schemas import MdPatchSource, Principal, TurnContext, TurnInput
 from .settings import ROOT, settings
 
@@ -42,7 +40,6 @@ async def lifespan(app: FastAPI):
     build_runtime()
     md_patch.TOKEN_VERIFIER = verify_token  # 令牌由 L 层签发、md 侧只消费
     _bootstrap_admin()
-    await _seed_doctors()
     yield
     state.close()
 
@@ -55,15 +52,6 @@ def _bootstrap_admin() -> None:
     if state.staff_by_id("admin") is None:
         state.seed_admin("admin", password_auth.hash_password("admin123"))
         print("[bootstrap] 已创建默认管理员 admin / admin123 —— 请立即修改密码", flush=True)
-
-
-async def _seed_doctors() -> None:
-    """把医生登记进 staff 表，否则直链校验会以"工号未开通"拒绝（这是防越权的正确行为）。"""
-    from .runtime import doctor_api
-
-    for d in await doctor_api.all() or []:
-        if state.staff_by_id(d.doctor_id) is None:
-            state.upsert_staff(d.doctor_id, "doctor", d.doctor_id, [d.department_id], d.name)
 
 
 app = FastAPI(title="医疗智能导诊 Agent", version="1.0.0", lifespan=lifespan)
@@ -182,19 +170,8 @@ async def login_password(payload: dict[str, str]) -> dict[str, Any]:
     return {"token": encode_principal(p), "principal": p.model_dump()}
 
 
-@app.post("/api/auth/exchange")
-async def exchange_magic_link(payload: dict[str, str]) -> dict[str, Any]:
-    try:
-        p = magic_link.verify(payload.get("token", ""))
-    except ValueError as exc:
-        code = str(exc)
-        msg = "链接已失效或已使用" if code == "E_LINK_INVALID" else "该工号未开通，请联系管理员"
-        raise HTTPException(status_code=401, detail=msg) from None
-    return {"token": encode_principal(p), "principal": p.model_dump()}
-
-
 @app.get("/api/auth/me")
-async def me(p: Principal = Depends(deps.get_principal)) -> dict[str, Any]:
+async def me(p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
     return p.model_dump()
 
 
@@ -262,15 +239,14 @@ async def md_versions(p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
     return {"versions": md_patch.list_versions()}
 
 
-# ─────────────────────────── 管理端：数据源与直链 ───────────────────────────
+# ─────────────────────────── 管理端：医生与数据源 ───────────────────────────
 
 
 @app.get("/api/admin/doctors")
 async def admin_doctors(dept_id: str | None = None,
                         p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
-    """管理端用：按科室列医生（含是否有照片），供头像上传与直链签发时选择。"""
+    """列出全部医生或指定科室的医生，供管理端维护照片，不依赖当天排班。"""
     from .media import photo_ref_for
-    from .runtime import doctor_api
 
     docs = await doctor_api.by_department(dept_id) if dept_id else (await doctor_api.all() or [])
     out = []
@@ -293,39 +269,21 @@ async def source_health(p: Principal = Depends(deps.get_admin)) -> dict[str, Any
     }
 
 
-@app.post("/api/admin/magic-links")
-async def create_magic_link(payload: dict[str, Any],
-                            p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
-    doctor_id = str(payload.get("doctor_id") or "")
-    if not doctor_id:
-        raise HTTPException(status_code=422, detail="缺少 doctor_id")
-    tok = magic_link.issue(doctor_id, issued_by=p.sub,
-                           ttl_hours=int(payload.get("ttl_hours") or settings.magic_link_ttl_hours))
-    return tok.model_dump()
+# ─────────────────────────── 管理端：头像 ───────────────────────────
 
 
-@app.post("/api/admin/magic-links/revoke")
-async def revoke_magic_link(payload: dict[str, Any],
-                            p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
-    n = magic_link.revoke(str(payload.get("doctor_id") or ""))
-    return {"revoked": n}
-
-
-# ─────────────────────────── 头像 ───────────────────────────
-
-
-@app.post("/api/doctors/{doctor_id}/photo")
-async def upload_photo(request: Request,
-                       doctor_id: str,
+@app.post("/api/admin/doctors/{doctor_id}/photo")
+async def upload_photo(doctor_id: str,
                        file: UploadFile = File(...),
                        consent_ack: bool = Form(False),
-                       authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    p = deps.get_principal(authorization)
+                       p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
     grant = deps.make_photo_grant(p, doctor_id, consent_ack)
-    raw = await file.read()
+    if await doctor_api.by_id(doctor_id) is None:
+        raise HTTPException(status_code=404, detail="医生不存在")
 
     # 体积先拦（避免把 10MB 放进 Pillow）
     max_bytes = int(settings.photo_cfg.get("max_bytes", 10 * 1024 * 1024))
+    raw = await file.read(max_bytes + 1)
     if len(raw) > max_bytes:
         raise HTTPException(status_code=413, detail={"code": "E_TOO_LARGE", "message": "图片过大"})
 
@@ -336,22 +294,16 @@ async def upload_photo(request: Request,
         raise HTTPException(status_code=http_status_for(exc.code),
                             detail={"code": exc.code, "message": exc.message}) from None
 
-    # 医生本人上传成功后：直链立即失效，防转发代传
-    if p.role == "doctor":
-        token = request.headers.get("X-Magic-Link", "")
-        if token:
-            magic_link.consume(token)
-
     return {"ok": True, "deduped": deduped,
             "photo": media_pipeline.ref_for(rec.model_dump()),
             "content_hash": rec.content_hash, "consent_source": rec.consent_source}
 
 
-@app.delete("/api/doctors/{doctor_id}/photo")
+@app.delete("/api/admin/doctors/{doctor_id}/photo")
 async def delete_photo(doctor_id: str,
-                       authorization: str | None = Header(default=None)) -> dict[str, Any]:
-    p = deps.get_principal(authorization)
-    deps.make_photo_grant(p, doctor_id, consent_ack=True)
+                       p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
+    if await doctor_api.by_id(doctor_id) is None:
+        raise HTTPException(status_code=404, detail="医生不存在")
     media_pipeline.remove(doctor_id, p.sub)
     return {"ok": True}
 
@@ -369,7 +321,6 @@ async def asr_placeholder() -> dict[str, Any]:
 
 app.mount("/kiosk", StaticFiles(directory=ROOT / "web" / "kiosk", html=True), name="kiosk")
 app.mount("/admin", StaticFiles(directory=ROOT / "web" / "admin", html=True), name="admin")
-app.mount("/doctor", StaticFiles(directory=ROOT / "web" / "doctor", html=True), name="doctor")
 
 
 @app.get("/")

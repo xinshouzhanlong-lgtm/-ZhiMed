@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import io
+import time
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.main import app
+from app import state
+from app.settings import settings
 
 
 @pytest.fixture(scope="module")
@@ -92,7 +96,7 @@ def test_doctor_card_has_photo_after_upload(client, admin_token):
     Image.new("RGB", (700, 700), (30, 130, 210)).save(png, format="PNG")
     png.seek(0)
     r = client.post(
-        "/api/doctors/doc-zhangming/photo",
+        "/api/admin/doctors/doc-zhangming/photo",
         files={"file": ("a.png", png.getvalue(), "image/png")},
         data={"consent_ack": "true"},
         headers=auth(admin_token),
@@ -117,7 +121,7 @@ def test_photo_upload_requires_consent(client, admin_token):
     png = io.BytesIO()
     Image.new("RGB", (700, 700), (10, 10, 10)).save(png, format="PNG")
     r = client.post(
-        "/api/doctors/doc-lihong/photo",
+        "/api/admin/doctors/doc-lihong/photo",
         files={"file": ("a.png", png.getvalue(), "image/png")},
         data={"consent_ack": "false"},
         headers=auth(admin_token),
@@ -128,7 +132,7 @@ def test_photo_upload_requires_consent(client, admin_token):
 def test_photo_rejects_svg(client, admin_token):
     svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
     r = client.post(
-        "/api/doctors/doc-lihong/photo",
+        "/api/admin/doctors/doc-lihong/photo",
         files={"file": ("a.png", svg, "image/png")},
         data={"consent_ack": "true"},
         headers=auth(admin_token),
@@ -172,35 +176,89 @@ def test_admin_requires_auth(client):
     assert client.get("/api/admin/departments", headers=auth("bad.token.here")).status_code == 401
 
 
-def test_magic_link_flow(client, admin_token):
-    r = client.post("/api/admin/magic-links", json={"doctor_id": "doc-wangqiang"},
-                    headers=auth(admin_token))
-    assert r.status_code == 200
-    url = r.json()["url"]
-    assert "#t=" in url
-    token = url.split("#t=", 1)[1]
-
-    e = client.post("/api/auth/exchange", json={"token": token})
-    assert e.status_code == 200, e.text
-    doc_token = e.json()["token"]
-    assert e.json()["principal"]["role"] == "doctor"
-
-    # 医生只能改自己
+def test_admin_photo_replace_and_remove(client, admin_token):
+    doctor_id = "doc-wangqiang"
+    path = f"/api/admin/doctors/{doctor_id}/photo"
     png = io.BytesIO()
     Image.new("RGB", (700, 700), (90, 90, 200)).save(png, format="PNG")
-    forbidden = client.post("/api/doctors/doc-lihong/photo",
-                            files={"file": ("a.png", png.getvalue(), "image/png")},
-                            headers=auth(doc_token))
-    assert forbidden.status_code == 403
+    first = client.post(path, files={"file": ("a.png", png.getvalue(), "image/png")},
+                        data={"consent_ack": "true"}, headers=auth(admin_token))
+    assert first.status_code == 200, first.text
+    assert first.json()["consent_source"] == "admin_proxy"
 
-    ok = client.post("/api/doctors/doc-wangqiang/photo",
-                     files={"file": ("a.png", png.getvalue(), "image/png")},
-                     headers={**auth(doc_token), "X-Magic-Link": token})
-    assert ok.status_code == 200, ok.text
-    assert ok.json()["consent_source"] == "doctor_self"
+    png = io.BytesIO()
+    Image.new("RGB", (700, 700), (200, 90, 90)).save(png, format="PNG")
+    second = client.post(path, files={"file": ("b.png", png.getvalue(), "image/png")},
+                         data={"consent_ack": "true"}, headers=auth(admin_token))
+    assert second.status_code == 200, second.text
+    assert second.json()["content_hash"] != first.json()["content_hash"]
+    detail = client.get(f"/api/doctors/{doctor_id}").json()
+    assert detail["photo"]["url_480"] == second.json()["photo"]["url_480"]
 
-    # 消费后链接失效
-    assert client.post("/api/auth/exchange", json={"token": token}).status_code == 401
+    assert client.delete(path, headers=auth(admin_token)).status_code == 200
+    assert client.get(f"/api/doctors/{doctor_id}").json()["photo"] is None
+    card = client.post("/api/voice/turn", json={"text": "王强医生介绍", "device_id": "photo-remove"}).json()["cards"][0]
+    assert card["photo_url"] is None
+    audit = state.one("SELECT * FROM photo_audit WHERE doctor_id=? AND action='remove'",
+                      (doctor_id,))
+    assert audit and audit["actor"] == "admin" and audit["actor_role"] == "admin"
+    assert client.delete(path, headers=auth(admin_token)).status_code == 200
+
+
+def test_photo_maintenance_requires_admin(client):
+    path = "/api/admin/doctors/doc-zhangming/photo"
+    assert client.get("/api/admin/doctors").status_code == 401
+    assert client.post(path, files={"file": ("a.png", b"image", "image/png")}).status_code == 401
+    assert client.delete(path).status_code == 401
+    legacy = jwt.encode({"sub": "doc-zhangming", "role": "doctor", "entry": "magic_link",
+                         "exp": int(time.time()) + 60}, settings.jwt_secret, algorithm="HS256")
+    assert client.get("/api/auth/me", headers=auth(legacy)).status_code == 401
+    assert client.get("/api/admin/doctors", headers=auth(legacy)).status_code == 401
+    assert client.post(path, headers=auth(legacy),
+                       files={"file": ("a.png", b"image", "image/png")}).status_code == 401
+    assert client.delete(path, headers=auth(legacy)).status_code == 401
+
+
+def test_unknown_doctor_photo_rejected(client, admin_token):
+    path = "/api/admin/doctors/doc-missing/photo"
+    upload = client.post(path, headers=auth(admin_token), data={"consent_ack": "true"},
+                         files={"file": ("a.png", b"image", "image/png")})
+    assert upload.status_code == 404
+    assert client.delete(path, headers=auth(admin_token)).status_code == 404
+
+
+def test_admin_doctors_independent_of_schedule(client, admin_token, monkeypatch):
+    from app.runtime import doctor_api, schedule_api
+
+    monkeypatch.setattr(schedule_api, "mode", "off")
+    response = client.get("/api/admin/doctors", headers=auth(admin_token))
+    assert response.status_code == 200
+    expected = {d.doctor_id for d in doctor_api._cache or []}
+    assert expected
+    assert {d["doctor_id"] for d in response.json()["doctors"]} == expected
+    cardio = client.get("/api/admin/doctors?dept_id=dept-cardio", headers=auth(admin_token)).json()
+    assert cardio["doctors"]
+    assert all(d["department_id"] == "dept-cardio" for d in cardio["doctors"])
+
+
+@pytest.mark.parametrize("method,path", [
+    ("GET", "/doctor/"),
+    ("GET", "/doctor/upload.js"),
+    ("POST", "/api/auth/exchange"),
+    ("POST", "/api/admin/magic-links"),
+    ("POST", "/api/admin/magic-links/revoke"),
+    ("POST", "/api/doctors/doc-zhangming/photo"),
+    ("DELETE", "/api/doctors/doc-zhangming/photo"),
+])
+def test_retired_doctor_endpoints_removed(client, method, path):
+    assert client.request(method, path).status_code == 404
+
+
+def test_two_frontends_available(client):
+    for path in ("/kiosk/", "/admin/"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
 
 
 def test_asr_placeholder_501(client):

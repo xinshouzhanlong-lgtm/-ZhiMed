@@ -7,6 +7,8 @@ const store = {
 };
 let currentPatch = null;
 let doctors = [];
+let departments = [];
+let photoBusy = false;
 
 function authHeaders(extra = {}) {
   return Object.assign({ Authorization: 'Bearer ' + store.token }, extra);
@@ -49,7 +51,7 @@ $('loginForm').addEventListener('submit', async (e) => {
 function enterApp(principal) {
   $('login').hidden = true;
   $('app').hidden = false;
-  $('who').textContent = `${principal.sub}（${principal.role === 'admin' ? '管理员' : '医生'}）· ${principal.entry}`;
+  $('who').textContent = `${principal.sub}（管理员）`;
   boot();
 }
 
@@ -74,6 +76,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 /* ── 启动加载 ── */
 async function boot() {
   const deptData = await api('/api/admin/departments');
+  departments = deptData.departments;
   const sel = $('deptSel');
   sel.innerHTML = '';
   deptData.departments.forEach((d) => {
@@ -88,45 +91,60 @@ async function boot() {
 }
 
 async function loadDoctors() {
-  const res = await fetch('/api/schedule/today').then((r) => r.json());
-  const deptIds = (res.rows || []).map((r) => r.department_id);
-  const set = new Set(deptIds);
-  const out = [];
-  for (const id of set) {
-    const d = await fetch('/api/departments/' + encodeURIComponent(id)).then((r) => r.json()).catch(() => null);
-    if (!d) continue;
-    // 逐个科室取医生：复用 /api/voice/turn 太重，这里直接读医生列表接口
-    const list = await api('/api/admin/doctors?dept_id=' + encodeURIComponent(id)).catch(() => ({ doctors: [] }));
-    (list.doctors || []).forEach((doc) => out.push(doc));
-  }
-  doctors = out;
   const sel = $('doctorSel');
+  const selectedId = sel.value;
+  const data = await api('/api/admin/doctors');
+  doctors = data.doctors || [];
   sel.innerHTML = '';
-  if (!out.length) {
+  if (!doctors.length) {
     const o = document.createElement('option');
     o.textContent = '（无医生数据）'; o.value = '';
     sel.appendChild(o);
+    loadPhotoPreview();
     return;
   }
-  out.forEach((doc) => {
+  doctors.forEach((doc) => {
     const o = document.createElement('option');
     o.value = doc.doctor_id;
-    o.textContent = `${doc.name} · ${doc.title} · ${doc.department_id}`;
+    const dept = departments.find((d) => d.department_id === doc.department_id);
+    o.textContent = `${doc.name} · ${doc.title} · ${dept ? dept.name : doc.department_id}`;
     sel.appendChild(o);
   });
-  await loadPhotoPreview();
+  if (doctors.some((d) => d.doctor_id === selectedId)) sel.value = selectedId;
+  loadPhotoPreview();
 }
 
-async function loadPhotoPreview() {
-  const id = $('doctorSel').value;
-  if (!id) return;
-  const doc = await fetch('/api/doctors/' + encodeURIComponent(id)).then((r) => r.json()).catch(() => null);
+function selectedDoctor() {
+  return doctors.find((d) => d.doctor_id === $('doctorSel').value);
+}
+
+function syncPhotoControls() {
+  const doc = selectedDoctor();
+  $('doctorSel').disabled = photoBusy || !doctors.length;
+  $('photoFile').disabled = photoBusy || !doc;
+  $('consentAck').disabled = photoBusy || !doc;
+  $('uploadBtn').disabled = photoBusy || !doc;
+  $('removePhotoBtn').disabled = photoBusy || !doc || !doc.photo;
+  $('uploadBtn').textContent = doc && doc.photo ? '更换照片' : '上传照片';
+}
+
+function loadPhotoPreview() {
+  const doc = selectedDoctor();
   const box = $('photoPreview');
+  box.replaceChildren();
   if (doc && doc.photo) {
-    box.innerHTML = `<img src="${doc.photo.url_480}" alt="头像">`;
+    const img = document.createElement('img');
+    img.src = doc.photo.url_480;
+    img.alt = doc.name + '的照片';
+    box.appendChild(img);
   } else {
     box.textContent = '无照片';
   }
+  $('doctorInfo').textContent = doc ? `${doc.name} · ${doc.title}` : '暂无医生数据，请检查医生数据源。';
+  $('photoFile').value = '';
+  $('consentAck').checked = false;
+  $('uploadMsg').textContent = '';
+  syncPhotoControls();
 }
 $('doctorSel').onchange = loadPhotoPreview;
 
@@ -253,41 +271,49 @@ $('voiceBtn').onclick = () => {
 
 /* ── 医生照片 ── */
 $('uploadBtn').onclick = async () => {
+  if (photoBusy) return;
   const file = $('photoFile').files[0];
   const doctorId = $('doctorSel').value;
   if (!file || !doctorId) { alert('请选择医生与图片'); return; }
-  if (!$('consentAck').checked) { alert('代传必须勾选"已取得肖像使用授权"'); return; }
+  if (!$('consentAck').checked) { alert('上传前请勾选"已取得肖像使用授权"'); return; }
   const fd = new FormData();
   fd.append('file', file);
   fd.append('consent_ack', 'true');
   $('uploadMsg').textContent = '上传中…';
+  photoBusy = true;
+  syncPhotoControls();
   try {
-    const r = await api(`/api/doctors/${encodeURIComponent(doctorId)}/photo`, { method: 'POST', body: fd });
+    const r = await api(`/api/admin/doctors/${encodeURIComponent(doctorId)}/photo`, { method: 'POST', body: fd });
+    await loadDoctors();
     $('uploadMsg').textContent = r.deduped ? '上传成功（命中内容去重，未重写文件）' : '上传成功';
-    await loadPhotoPreview();
   } catch (err) {
     const map = { E_BAD_MAGIC: '文件不是有效图片或格式不支持', E_SVG_REJECTED: '不接受 SVG',
                   E_BAD_DIMENSION: '图片尺寸不符合要求', E_TOO_LARGE: '图片过大' };
     $('uploadMsg').textContent = map[err.code] || err.message;
+  } finally {
+    photoBusy = false;
+    syncPhotoControls();
   }
 };
 
-$('linkBtn').onclick = async () => {
-  const doctorId = $('doctorSel').value;
-  if (!doctorId) return;
+$('removePhotoBtn').onclick = async () => {
+  if (photoBusy) return;
+  const doc = selectedDoctor();
+  if (!doc || !doc.photo) return;
+  if (!confirm(`确认移除${doc.name}的照片？患者端将显示默认头像。`)) return;
+  photoBusy = true;
+  syncPhotoControls();
+  $('uploadMsg').textContent = '正在移除…';
   try {
-    const r = await api('/api/admin/magic-links', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ doctor_id: doctorId }),
-    });
-    $('linkRow').hidden = false;
-    $('linkOut').value = r.url;
-  } catch (err) { alert(err.message); }
-};
-
-$('copyLink').onclick = async () => {
-  try { await navigator.clipboard.writeText($('linkOut').value); $('copyLink').textContent = '已复制'; }
-  catch (e) { $('linkOut').select(); }
+    await api(`/api/admin/doctors/${encodeURIComponent(doc.doctor_id)}/photo`, { method: 'DELETE' });
+    await loadDoctors();
+    $('uploadMsg').textContent = '照片已移除，患者端将显示默认头像。';
+  } catch (err) {
+    $('uploadMsg').textContent = err.message;
+  } finally {
+    photoBusy = false;
+    syncPhotoControls();
+  }
 };
 
 /* ── 数据源 ── */

@@ -32,19 +32,10 @@ def get_admin(authorization: str | None = Header(default=None)) -> Principal:
 
 
 def make_photo_grant(p: Principal, doctor_id: str, consent_ack: bool) -> PhotoWriteGrant:
-    """双角色上传口子的授权判定。
-
-    admin  → 代传，必须勾选"已取得肖像授权"，否则 422
-    doctor → 本人自传，consent_source=doctor_self；越权 403 且不提示目标是否存在
-    """
-    if p.role == "doctor":
-        if p.sub != doctor_id:
-            raise HTTPException(status_code=403, detail="只能修改本人的照片")
-        return PhotoWriteGrant(subject=p.sub, role="doctor", target_doctor_id=doctor_id,
-                               consent_source="doctor_self")
-    if p.role == "admin":
-        if not consent_ack:
-            raise HTTPException(status_code=422, detail="代传必须确认已取得该医生肖像使用授权")
-        return PhotoWriteGrant(subject=p.sub, role="admin", target_doctor_id=doctor_id,
-                               consent_source="admin_proxy")
-    raise HTTPException(status_code=403, detail="无权上传")
+    """管理员统一维护照片，上传前必须确认已取得肖像使用授权。"""
+    if p.role != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    if not consent_ack:
+        raise HTTPException(status_code=422, detail="上传必须确认已取得该医生肖像使用授权")
+    return PhotoWriteGrant(subject=p.sub, role="admin", target_doctor_id=doctor_id,
+                           consent_source="admin_proxy")

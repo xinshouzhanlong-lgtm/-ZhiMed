@@ -211,7 +211,7 @@ def remove(doctor_id: str, actor: str) -> None:
     state.execute(
         "INSERT INTO photo_audit(doctor_id, action, content_hash, actor, actor_role, consent_source,"
         " ip_hash, created_at) VALUES (?,?,?,?,?,?,?,?)",
-        (doctor_id, "remove", "", actor, "", "", "", state.now_ms()),
+        (doctor_id, "remove", "", actor, "admin", "", "", state.now_ms()),
     )
 
 

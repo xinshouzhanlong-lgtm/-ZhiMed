@@ -6,11 +6,12 @@
 from __future__ import annotations
 
 import io
+import os
 import sys
 
 import httpx
 
-BASE = "http://127.0.0.1:8787"
+BASE = os.environ.get("GUIDE_SMOKE_BASE_URL", "http://127.0.0.1:8787")
 # 每轮用独立 device_id：限流是"每终端 20 次/分"，脚本要模拟不同终端而非同一台狂刷
 import time as _time
 DEVICE = "smoke-" + _time.strftime("%H%M%S")
@@ -97,7 +98,7 @@ def main() -> int:
 
     buf = io.BytesIO()
     Image.new("RGB", (900, 900), (28, 122, 200)).save(buf, format="PNG")
-    up = C.post("/api/doctors/doc-zhangming/photo", headers=H,
+    up = C.post("/api/admin/doctors/doc-zhangming/photo", headers=H,
                 files={"file": ("t.png", buf.getvalue(), "image/png")},
                 data={"consent_ack": "true"})
     check(up.status_code == 200, "上传成功")
@@ -111,32 +112,31 @@ def main() -> int:
     check(bool(q["cards"] and q["cards"][0]["photo_url"]), "患者端医生卡带头像")
 
     svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
-    bad = C.post("/api/doctors/doc-lihong/photo", headers=H,
+    bad = C.post("/api/admin/doctors/doc-lihong/photo", headers=H,
                  files={"file": ("a.png", svg, "image/png")}, data={"consent_ack": "true"})
     check(bad.status_code == 415, f"SVG 被拒（{bad.status_code}）")
 
-    show("6 医生自助：直链 → 换票 → 只能改自己")
-    link = C.post("/api/admin/magic-links", headers=H, json={"doctor_id": "doc-wulin"}).json()
-    check("#t=" in link["url"], "直链 token 在 fragment（不进日志）")
-    mt = link["url"].split("#t=", 1)[1]
-    ex = C.post("/api/auth/exchange", json={"token": mt})
-    check(ex.status_code == 200, "换票成功")
-    dt = ex.json()["token"]
-    DH = {"Authorization": f"Bearer {dt}"}
-
-    other = C.post("/api/doctors/doc-chenli/photo", headers=DH,
-                   files={"file": ("t.png", buf.getvalue(), "image/png")})
-    check(other.status_code == 403, "越权改他人 → 403")
-    own = C.post("/api/doctors/doc-wulin/photo", headers={**DH, "X-Magic-Link": mt},
-                 files={"file": ("t.png", buf.getvalue(), "image/png")})
-    check(own.status_code == 200, "本人上传成功")
-    reuse = C.post("/api/auth/exchange", json={"token": mt})
-    check(reuse.status_code == 401, "链接已消费，重复使用被拒")
+    show("6 管理端照片维护与权限")
+    doctors = C.get("/api/admin/doctors", headers=H).json()["doctors"]
+    check(any(d["doctor_id"] == "doc-zhangming" for d in doctors), "管理端可查询全部医生")
+    photo_path = "/api/admin/doctors/doc-zhangming/photo"
+    check(C.delete(photo_path).status_code == 401, "未登录不能移除照片")
+    removed = C.delete(photo_path, headers=H)
+    check(removed.status_code == 200, "管理员移除照片成功")
+    detail = C.get("/api/doctors/doc-zhangming").json()
+    check(detail["photo"] is None, "患者端医生详情不再引用已移除照片")
+    restored = C.post(photo_path, headers=H,
+                      files={"file": ("t.png", buf.getvalue(), "image/png")},
+                      data={"consent_ack": "true"})
+    check(restored.status_code == 200, "管理员可以重新上传照片")
 
     show("7 静态页面")
-    for path, name in (("/kiosk/", "患者端"), ("/admin/", "管理端"), ("/doctor/", "医生自助页")):
+    for path, name in (("/kiosk/", "患者端"), ("/admin/", "管理端")):
         r = C.get(path)
         check(r.status_code == 200 and "text/html" in r.headers["content-type"], f"{name} {path}")
+    check(C.get("/doctor/").status_code == 404, "医生端入口已移除")
+    check(C.post("/api/auth/exchange", json={"token": "retired"}).status_code == 404,
+          "医生直链换票接口已移除")
 
     show("结论")
     if fails:
