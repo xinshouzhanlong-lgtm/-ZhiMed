@@ -44,14 +44,16 @@ function render(data) {
     bar.textContent = '排班数据暂时取不到，请咨询导医台。';
   } else if (data.degraded) {
     dot.className = 'dot warn';
-    const src = data.meta ? (data.meta.source === 'api' ? 'HIS' : '手动') : '手动';
+    const src = data.meta ? ({ api: '接口', manual: '人工', mixed: '接口与人工' }[data.meta.source] || '人工') : '人工';
     $('statusText').textContent = `降级 · ${src}数据 · ${data.reason || ''}`;
     bar.hidden = false;
     bar.textContent = '当前排班为人工维护数据，可能不是最新。请以现场导医为准。';
   } else {
     dot.className = 'dot';
     const t = data.meta ? new Date(data.meta.fetched_at) : new Date();
-    $('statusText').textContent = `数据正常 · HIS 实时 · ${pad(t.getHours())}:${pad(t.getMinutes())}`;
+    const sources = new Set((data.rows || []).map((r) => r.source));
+    const label = sources.size > 1 ? '接口与人工排班' : (sources.has('manual') ? '人工排班' : '接口排班');
+    $('statusText').textContent = `数据正常 · ${label} · ${pad(t.getHours())}:${pad(t.getMinutes())}`;
     bar.hidden = true;
   }
 
@@ -67,9 +69,10 @@ function render(data) {
     const srcLabel = r.source === 'api' ? 'HIS' : '手动';
     const badgeCls = r.source === 'api' ? 'badge' : 'badge manual';
     const stale = r.stale ? '<span class="badge stale">已过期</span>' : '';
+    const escape = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     el.innerHTML = `
-      <h3>${r.department_name || r.department_id}</h3>
-      <div class="loc">${r.location || '位置待补充'}</div>
+      <h3>${escape(r.department_name || r.department_id)}</h3>
+      <div class="loc">${escape(r.location || '位置待补充')}</div>
       <div class="meta">
         <span>${r.status === 'on_duty' ? (r.doctor_count || 0) + ' 位医生出诊' : '今日停诊'}</span>
         <span class="${badgeCls}">${srcLabel}</span>

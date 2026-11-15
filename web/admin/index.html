@@ -10,7 +10,8 @@
 <header class="top">
   <strong>导诊后台</strong>
   <nav class="tabs">
-    <button class="tab active" data-panel="panelMd">科室地址</button>
+    <button class="tab active" data-panel="panelMd">科室地址修改</button>
+    <button class="tab" data-panel="panelSchedule">医生排班</button>
     <button class="tab" data-panel="panelDoctor">医生照片维护</button>
     <button class="tab" data-panel="panelSource">数据源</button>
   </nav>
@@ -31,8 +32,8 @@
 <main id="app" hidden>
   <!-- 科室地址 -->
   <section class="panel" id="panelMd">
-    <h2>科室地址维护</h2>
-    <p class="muted">修改会先生成提案并展示 diff，确认后才写入 <code>data/departments.md</code>。</p>
+    <h2>科室地址修改</h2>
+    <p class="muted">选择科室查看当前信息，填写新值并预览差异，确认后同步到患者端。历史修改支持回滚。</p>
 
     <div class="row">
       <label>科室
@@ -49,6 +50,12 @@
     </div>
 
     <div class="row">
+      <label class="grow">当前值
+        <input id="currentValue" readonly />
+      </label>
+    </div>
+
+    <div class="row">
       <label class="grow">新值
         <input id="newValue" placeholder="例如：门诊楼 4F 东侧" />
       </label>
@@ -57,7 +64,7 @@
     </div>
 
     <div class="actions">
-      <button id="proposeBtn">生成提案（不写入）</button>
+      <button id="proposeBtn">预览修改</button>
     </div>
 
     <div class="diffbox" id="diffBox" hidden>
@@ -76,6 +83,48 @@
       <summary>历史版本 / 回滚</summary>
       <div id="versions"></div>
     </details>
+  </section>
+
+  <section class="panel" id="panelSchedule" hidden>
+    <h2>医生排班导入</h2>
+    <p class="muted">下载模板填写排班，上传后先校验和预览，确认后生效。支持 .xlsx，最大 5MB、2000 行。</p>
+    <p class="muted">按医生、日期、时段更新对应排班，未导入的排班保留。时段可填上午、下午、夜间；状态可填出诊、停诊。</p>
+    <div class="actions">
+      <button id="downloadScheduleTemplate" class="ghost" type="button">下载 Excel 模板</button>
+    </div>
+    <div class="row">
+      <label class="grow">选择填写好的 Excel
+        <input id="scheduleFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+      </label>
+      <button id="previewScheduleBtn" type="button">校验并预览</button>
+    </div>
+    <div id="scheduleImportMsg" class="import-message" role="status"></div>
+    <ul id="scheduleErrors" class="import-errors" role="alert" hidden></ul>
+    <div id="schedulePreview" class="import-preview" hidden>
+      <p id="schedulePreviewSummary"></p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Excel 行</th><th>日期</th><th>医生</th><th>科室</th><th>时段</th><th>诊室</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="schedulePreviewRows"></tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <button id="cancelScheduleImport" class="ghost" type="button">取消</button>
+        <button id="commitScheduleBtn" type="button">确认导入</button>
+      </div>
+    </div>
+    <h3>查看医生排班</h3>
+    <div class="row">
+      <label>日期<input id="scheduleDate" type="date" /></label>
+      <button id="refreshScheduleBtn" class="ghost" type="button">刷新排班</button>
+    </div>
+    <p id="scheduleListMsg" class="muted" role="status"></p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>日期</th><th>医生</th><th>科室</th><th>时段</th><th>诊室</th><th>状态</th><th>来源</th></tr></thead>
+        <tbody id="scheduleRows"></tbody>
+      </table>
+    </div>
   </section>
 
   <!-- 医生照片 -->
@@ -114,5 +163,6 @@
 </main>
 
 <script src="app.js"></script>
+<script src="schedule.js"></script>
 </body>
 </html>

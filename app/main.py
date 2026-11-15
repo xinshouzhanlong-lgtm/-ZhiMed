@@ -11,6 +11,8 @@
 from __future__ import annotations
 
 import time
+import asyncio
+from datetime import date as Date
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -29,6 +31,7 @@ from .md import patch as md_patch
 from .runtime import breaker, build_runtime, doctor_api, registry, schedule_api, schedule_manual
 from .schemas import MdPatchSource, Principal, TurnContext, TurnInput
 from .settings import ROOT, settings
+from .schedule.view import day_slots
 
 # ─────────────────────────── 启动 ───────────────────────────
 
@@ -267,6 +270,77 @@ async def source_health(p: Principal = Depends(deps.get_admin)) -> dict[str, Any
         "conflicts": state.list_conflicts(),
         "policy_default": settings.policy_for("*"),
     }
+
+
+# ─────────────────────────── 管理端：排班导入 ───────────────────────────
+
+
+@app.get("/api/admin/schedules/template")
+async def schedule_template(p: Principal = Depends(deps.get_admin)) -> FileResponse:
+    from .schedule.importer import TEMPLATE_PATH
+
+    return FileResponse(TEMPLATE_PATH, filename="医生排班导入模板.xlsx",
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.get("/api/admin/schedules")
+async def admin_schedules(date: str | None = None,
+                          p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
+    from .datasource import dept_md
+    from .runtime import today_str
+
+    day = date or today_str()
+    try:
+        day = Date.fromisoformat(day).isoformat()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="日期格式应为 YYYY-MM-DD") from None
+    doctors = await doctor_api.all()
+    if doctors is None:
+        raise HTTPException(status_code=503, detail="医生数据源暂不可用")
+    depts = {d.department_id: d.name for d in dept_md.load_all(settings.departments_md)}
+    rows = [{"doctor_id": d.doctor_id, "doctor_name": d.name,
+             "department_id": d.department_id, "department_name": depts.get(d.department_id, d.department_id),
+             **s.model_dump(), "date": day}
+            for d in doctors for s in day_slots(d.schedule, day, include_suspended=True)]
+    return {"date": day, "rows": rows}
+
+
+@app.post("/api/admin/schedules/preview")
+async def preview_schedule(file: UploadFile = File(...),
+                           p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
+    from .datasource import dept_md
+    from .schedule import importer
+
+    doctors = await doctor_api.all()
+    if doctors is None:
+        raise HTTPException(status_code=503, detail="医生数据源暂不可用，请恢复后再导入")
+    raw = await file.read(importer.MAX_BYTES + 1)
+    depts = dept_md.load_all(settings.departments_md)
+    try:
+        return await asyncio.to_thread(importer.preview, raw, file.filename or "", doctors, depts, p.sub)
+    except importer.ImportErrorDetail as exc:
+        raise HTTPException(status_code=exc.status, detail={"code": exc.code, "message": exc.message,
+                                                          "errors": exc.errors}) from None
+
+
+class ScheduleCommit(BaseModel):
+    import_id: str = Field(min_length=1, max_length=64)
+
+
+@app.post("/api/admin/schedules/commit")
+async def commit_schedule(payload: ScheduleCommit,
+                          p: Principal = Depends(deps.get_admin)) -> dict[str, Any]:
+    from .datasource import dept_md
+    from .schedule import importer
+
+    doctors = await doctor_api.all()
+    if doctors is None:
+        raise HTTPException(status_code=503, detail="医生数据源暂不可用，请恢复后再确认")
+    try:
+        return importer.commit(payload.import_id, doctors,
+                               dept_md.load_all(settings.departments_md), p.sub)
+    except importer.ImportErrorDetail as exc:
+        raise HTTPException(status_code=exc.status, detail={"code": exc.code, "message": exc.message}) from None
 
 
 # ─────────────────────────── 管理端：头像 ───────────────────────────

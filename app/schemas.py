@@ -33,7 +33,7 @@ class SourcePolicy(BaseModel):
 
 class SourceMeta(BaseModel):
     model_config = ConfigDict(frozen=True)
-    source: Literal["api", "manual"]
+    source: Literal["api", "manual", "mixed"]
     fetched_at: int
     stale: bool = False
     overridden: bool = False
@@ -111,6 +111,8 @@ class DoctorSlot(BaseModel):
     period: Literal["上午", "下午", "夜间"]
     room: str = ""
     quota_left: int | None = None
+    status: Literal["on_duty", "suspended"] = "on_duty"
+    source: Literal["api", "manual"] = "api"
 
 
 class DoctorProfile(BaseModel):

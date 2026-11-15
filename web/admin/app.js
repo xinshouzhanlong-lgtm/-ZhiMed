@@ -26,6 +26,7 @@ async function api(path, opts = {}) {
     const msg = (d && d.message) || (typeof d === 'string' ? d : JSON.stringify(d || {}));
     const err = new Error(msg || ('HTTP ' + resp.status));
     err.status = resp.status; err.code = d && d.code;
+    err.detail = d;
     throw err;
   }
   return data;
@@ -68,8 +69,9 @@ document.querySelectorAll('.tab').forEach((btn) => {
   btn.onclick = () => {
     document.querySelectorAll('.tab').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
-    ['panelMd', 'panelDoctor', 'panelSource'].forEach((id) => { $(id).hidden = true; });
+    ['panelMd', 'panelSchedule', 'panelDoctor', 'panelSource'].forEach((id) => { $(id).hidden = true; });
     $(btn.dataset.panel).hidden = false;
+    if (btn.dataset.panel === 'panelSchedule' && store.token) window.ScheduleAdmin.load();
   };
 });
 
@@ -78,6 +80,7 @@ async function boot() {
   const deptData = await api('/api/admin/departments');
   departments = deptData.departments;
   const sel = $('deptSel');
+  const selectedDept = sel.value;
   sel.innerHTML = '';
   deptData.departments.forEach((d) => {
     const o = document.createElement('option');
@@ -85,10 +88,31 @@ async function boot() {
     o.textContent = d.name;
     sel.appendChild(o);
   });
+  if (departments.some((d) => d.department_id === selectedDept)) sel.value = selectedDept;
+  syncDeptField();
   await loadDoctors();
   await loadVersions();
   await loadHealth();
 }
+
+function syncDeptField() {
+  const dept = departments.find((d) => d.department_id === $('deptSel').value);
+  const field = $('fieldSel').value === 'serviceScope' ? 'service_scope' : $('fieldSel').value;
+  $('currentValue').value = dept ? (dept[field] || '') : '';
+  $('newValue').value = '';
+  $('diffBox').hidden = true;
+  currentPatch = null;
+  lastAsr = null;
+  $('asrConf').textContent = '';
+}
+$('deptSel').onchange = syncDeptField;
+$('fieldSel').onchange = syncDeptField;
+$('newValue').addEventListener('input', () => {
+  currentPatch = null;
+  $('diffBox').hidden = true;
+  lastAsr = null;
+  $('asrConf').textContent = '';
+});
 
 async function loadDoctors() {
   const sel = $('doctorSel');

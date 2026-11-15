@@ -30,6 +30,7 @@ from .schemas import (
     TurnOutput,
 )
 from .settings import settings
+from .schedule.view import day_slots
 
 _TURN_CACHE: dict[str, list[str]] = {}
 
@@ -188,7 +189,7 @@ async def _execute(answer_id: str, intent: IntentKind, slots: Slots, path: str, 
                 return _wrap(answer_id, IntentKind.OUT_OF_SCOPE, "没有找到这位医生，请确认姓名。",
                              degraded=False, path=path, started=started, reason="NOT_FOUND")
             doc = r.data
-            slots_txt = _fmt_slots([s for s in doc.schedule if s.date == "*" or s.date == today_str()])
+            slots_txt = _fmt_slots(day_slots(doc.schedule, today_str()))
             text = f"{doc.name}，{doc.title}，专长{doc.specialty}。坐诊时间：{slots_txt}。"
             facts = {"姓名": doc.name, "职称": doc.title, "专长": doc.specialty}
             card = AnswerCard(kind="doctor", title=doc.name, subtitle=f"{doc.title} · {doc.specialty}",
@@ -214,7 +215,7 @@ async def _execute(answer_id: str, intent: IntentKind, slots: Slots, path: str, 
         from .media import photo_ref_for
 
         for d in doctors[:6]:
-            slots_txt = _fmt_slots([s for s in d.schedule if s.date == "*" or s.date == today_str()])
+            slots_txt = _fmt_slots(day_slots(d.schedule, today_str()))
             parts.append(f"{d.name}（{d.title}、{d.specialty}、{slots_txt}）")
             ref = photo_ref_for(d.doctor_id)
             cards.append(AnswerCard(kind="doctor", title=d.name,

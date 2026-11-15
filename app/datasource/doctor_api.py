@@ -31,6 +31,7 @@ import time
 from typing import Any
 
 from ..schemas import DoctorProfile, DoctorSlot, SourceQuery, SourceResult
+from .. import state
 from ..settings import settings
 from .base import load_fixture
 
@@ -63,6 +64,19 @@ class DoctorApiAdapter:
 
     # ── 业务便捷方法 ──
     async def all(self) -> list[DoctorProfile] | None:
+        doctors = await self._base_all()
+        if doctors is None:
+            return None
+        overrides: dict[str, list[DoctorSlot]] = {}
+        for row in state.schedule_rows():
+            overrides.setdefault(row["doctor_id"], []).append(DoctorSlot(
+                date=row["date"], period=row["period"], room=row["room"],
+                status=row["status"], source="manual"))
+        # 只缓存原始接口数据，每次读取最新人工排班，导入后立即生效。
+        return [d.model_copy(update={"schedule": [*d.schedule, *overrides.get(d.doctor_id, [])]})
+                for d in doctors]
+
+    async def _base_all(self) -> list[DoctorProfile] | None:
         now = int(time.time() * 1000)
         if self._cache and now - self._cache_at < 30_000:
             return self._cache

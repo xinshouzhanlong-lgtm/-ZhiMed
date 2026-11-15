@@ -16,6 +16,7 @@ code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 13p
   border-bottom: 1px solid var(--line); padding: 12px 24px; position: sticky; top: 0; z-index: 5;
 }
 .tabs { display: flex; gap: 6px; }
+.tabs { flex-wrap: wrap; }
 .tab {
   border: 1px solid transparent; background: none; padding: 7px 14px; border-radius: 8px;
   cursor: pointer; color: var(--muted); font-size: 14px;
@@ -75,6 +76,14 @@ main { max-width: 960px; margin: 0 auto; padding: 24px; }
 .kv { display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; font-size: 13px; margin-top: 12px; }
 .kv .k { color: var(--muted); }
 .ok { color: var(--ok); } .warnc { color: var(--warn); } .errc { color: var(--err); }
+.import-message { margin-top: 14px; min-height: 20px; }
+.import-errors { max-height: 220px; overflow: auto; color: var(--err); padding-left: 22px; line-height: 1.8; }
+.import-preview { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: #f8fbff; }
+.table-scroll { overflow: auto; max-height: 440px; margin-top: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; }
+th { background: #eef3fa; font-weight: 600; position: sticky; top: 0; }
+input[readonly] { background: #f4f6f9; color: var(--muted); }
 
 @media (max-width: 600px) {
   .top { gap: 10px; padding: 12px; flex-wrap: wrap; }

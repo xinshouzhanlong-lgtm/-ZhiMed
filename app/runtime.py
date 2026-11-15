@@ -24,6 +24,7 @@ from .schemas import (
     ToolResult,
 )
 from .settings import settings
+from .schedule.view import day_slots
 
 adapters = AdapterRegistry()
 breaker = CircuitBreaker(
@@ -45,10 +46,34 @@ def today_str() -> str:
     return time.strftime("%Y-%m-%d")
 
 
-async def decorate(rs: ResolvedSchedule) -> ResolvedSchedule:
+async def decorate(rs: ResolvedSchedule, day: str | None = None) -> ResolvedSchedule:
     """给排班行补医生预览与头像，供 UI 直接渲染。"""
+    from .schemas import SourceMeta
+
+    day = day or today_str()
+    departments = {d.department_id: d for d in dept_md.load_all(settings.departments_md)}
+    all_doctors = await doctor_api.all() or []
+    imported = [r for r in state.schedule_rows() if r["date"] == day]
+    doctor_map = {d.doctor_id: d for d in all_doctors}
+    affected = {doctor_map[r["doctor_id"]].department_id for r in imported if r["doctor_id"] in doctor_map}
+    existing = {r.department_id for r in rs.rows}
+    for dept_id in affected - existing:
+        dept = departments.get(dept_id)
+        if dept:
+            rs.rows.append(ScheduleRow(department_id=dept_id, department_name=dept.name,
+                                       location=dept.location))
     for row in rs.rows:
-        doctors = await doctor_api.by_department(row.department_id)
+        dept = departments.get(row.department_id)
+        if dept:
+            row.location = dept.location
+        doctors = [d for d in all_doctors if d.department_id == row.department_id]
+        if row.department_id in affected:
+            doctors = [d for d in doctors if day_slots(d.schedule, day)]
+            row.doctor_count = len(doctors)
+            row.status = "on_duty" if doctors else "suspended"
+            row.source = "manual"
+            row.fetched_at = max(r["updated_at"] for r in imported)
+            row.stale = False
         preview: list[DoctorBrief] = []
         for d in doctors[:3]:
             ref = photo_ref_for(d.doctor_id)
@@ -63,6 +88,11 @@ async def decorate(rs: ResolvedSchedule) -> ResolvedSchedule:
         row.doctors_preview = preview
         if not row.doctor_count and doctors:
             row.doctor_count = len(doctors)
+    if imported and rs.rows:
+        sources = {r.source for r in rs.rows}
+        rs.meta = SourceMeta(source=next(iter(sources)) if len(sources) == 1 else "mixed",
+                             fetched_at=max(r.fetched_at for r in rs.rows),
+                             stale=any(r.stale for r in rs.rows), overridden=True)
     return rs
 
 
@@ -74,7 +104,7 @@ async def _tool_list_on_duty(args: dict[str, Any]) -> ToolResult:
 
     day = args.get("date") or today_str()
     rs = await resolve_all(day, api=schedule_api, manual=schedule_manual, breaker=breaker)
-    rs = await decorate(rs)
+    rs = await decorate(rs, day)
     return ToolResult(status="ok", data=rs, source=rs.meta,
                       reason=rs.reason, degraded_to=("manual" if rs.degraded else None))
 
@@ -123,7 +153,7 @@ async def _tool_get_doctor_schedule(args: dict[str, Any]) -> ToolResult:
     if doc is None:
         return ToolResult(status="not_found", candidates=[])
     day = args.get("date") or today_str()
-    slots = [s for s in doc.schedule if s.date in ("*", day)]
+    slots = day_slots(doc.schedule, day)
     return ToolResult(status="ok", data={"doctor": doc, "slots": slots})
 
 

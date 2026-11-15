@@ -1,13 +1,14 @@
 """S 层：SQLite 状态存储（单写者 + WAL）。
 
 纪律（对应设计文档 §4.4）：
-- md 文件是内容真相源，DB 只存快照、索引与审计；
+- 科室内容以 md 为准；DB 保存会话、账号、审计、版本快照及管理员导入的排班；
 - 唯一写入口是 md/patch 与本模块的仓储函数，业务代码不要直接执行 SQL；
 - 外部副作用（写 md / 写头像）都要"重读校验"，不信任写入返回值。
 """
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 import threading
 import time
@@ -76,6 +77,16 @@ CREATE TABLE IF NOT EXISTS auth_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT, principal_sub TEXT, entry TEXT,
   ip_hash TEXT, ua_hash TEXT, created_at INTEGER
 );
+CREATE TABLE IF NOT EXISTS doctor_schedule (
+  doctor_id TEXT, date TEXT, period TEXT, room TEXT, status TEXT,
+  updated_at INTEGER, updated_by TEXT, import_id TEXT,
+  PRIMARY KEY (doctor_id, date, period)
+);
+CREATE TABLE IF NOT EXISTS schedule_import (
+  id TEXT PRIMARY KEY, filename TEXT, payload_json TEXT, base_hash TEXT,
+  catalog_hash TEXT, created_by TEXT, created_at INTEGER, committed_at INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_doctor_schedule_date ON doctor_schedule(date);
 CREATE INDEX IF NOT EXISTS idx_message_session ON message(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_answer_intent ON answer_record(intent, created_at);
 CREATE INDEX IF NOT EXISTS idx_photo_doctor_status ON doctor_photo(doctor_id, status);
@@ -117,6 +128,57 @@ def init_db() -> None:
         c = conn()
         c.executescript(SCHEMA)
         c.commit()
+
+
+def schedule_rows() -> list[dict]:
+    return [dict(r) for r in query("SELECT * FROM doctor_schedule ORDER BY date, doctor_id, period")]
+
+
+def schedule_fingerprint(rows: list[dict], keys: set[tuple[str, str, str]]) -> str:
+    relevant = sorted((r["doctor_id"], r["date"], r["period"], r["room"], r["status"],
+                       r["import_id"]) for r in rows
+                      if (r["doctor_id"], r["date"], r["period"]) in keys)
+    return hashlib.sha256(json.dumps(relevant, ensure_ascii=False).encode()).hexdigest()
+
+
+def save_schedule_import(import_id: str, filename: str, rows: list[dict], base_hash: str,
+                         catalog_hash: str, author: str) -> None:
+    execute("INSERT INTO schedule_import(id,filename,payload_json,base_hash,catalog_hash,"
+            "created_by,created_at) VALUES (?,?,?,?,?,?,?)",
+            (import_id, filename, json.dumps(rows, ensure_ascii=False), base_hash,
+             catalog_hash, author, now_ms()))
+
+
+def commit_schedule_import(import_id: str, author: str, catalog_hash: str) -> dict:
+    """同一事务内校验版本并更新整批排班；重试同一批次不重复写入。"""
+    with tx() as c:
+        batch = c.execute("SELECT * FROM schedule_import WHERE id=?", (import_id,)).fetchone()
+        if not batch:
+            raise ValueError("E_IMPORT_NOT_FOUND")
+        if batch["created_by"] != author:
+            raise ValueError("E_IMPORT_OWNER")
+        rows = json.loads(batch["payload_json"])
+        if batch["committed_at"]:
+            return {"ok": True, "import_id": import_id, "count": len(rows), "already_committed": True}
+        if now_ms() - batch["created_at"] > 15 * 60 * 1000:
+            raise ValueError("E_IMPORT_EXPIRED")
+        if catalog_hash != batch["catalog_hash"]:
+            raise ValueError("E_IMPORT_STALE")
+        keys = {(r["doctor_id"], r["date"], r["period"]) for r in rows}
+        current = [dict(r) for r in c.execute("SELECT * FROM doctor_schedule").fetchall()]
+        if schedule_fingerprint(current, keys) != batch["base_hash"]:
+            raise ValueError("E_IMPORT_STALE")
+        now = now_ms()
+        c.executemany(
+            "INSERT INTO doctor_schedule(doctor_id,date,period,room,status,updated_at,updated_by,import_id)"
+            " VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(doctor_id,date,period) DO UPDATE SET"
+            " room=excluded.room,status=excluded.status,updated_at=excluded.updated_at,"
+            " updated_by=excluded.updated_by,import_id=excluded.import_id",
+            [(r["doctor_id"], r["date"], r["period"], r["room"], r["status"], now, author, import_id)
+             for r in rows],
+        )
+        c.execute("UPDATE schedule_import SET committed_at=? WHERE id=?", (now, import_id))
+        return {"ok": True, "import_id": import_id, "count": len(rows), "already_committed": False}
 
 
 def query(sql: str, params: tuple | list = ()) -> list[sqlite3.Row]:
