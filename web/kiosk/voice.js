@@ -8,16 +8,108 @@
   const askInput = $('askInput');
   const hint = $('askHint');
   const DEFAULT_HINT = '点「语音」说话，或直接打字提问 · 也可以问「今天有哪些科室出诊」';
+  const WELCOME_TEXT = '可以这样问：「心内科在几楼」「今天有哪些科室出诊」「张明医生什么时候坐诊」';
+  const SESSION_KEY = 'guide_session_id';
+  const IDLE_MS = 60_000;
+  const WARNING_MS = 10_000;
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recog = null;
   let listening = false;
-  let sessionId = (() => {
-    const k = 'guide_session_id';
-    let v = sessionStorage.getItem(k);
-    if (!v) { v = 's-' + Math.random().toString(36).slice(2, 10); sessionStorage.setItem(k, v); }
-    return v;
-  })();
+  let recognitionTimer = null;
+  let speaking = false;
+  let utterance = null;
+  let speechTimer = null;
+  let active = false;
+  let generation = 0;
+  let idleDeadline = 0;
+  const requests = new Set();
+  let previousSession = null;
+  try { previousSession = sessionStorage.getItem(SESSION_KEY); } catch (e) { /* 存储禁用时仍可清屏 */ }
+  let sessionId = newSessionId();
+
+  function newSessionId() {
+    const id = 's-' + (window.crypto && window.crypto.randomUUID
+      ? window.crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+    try { sessionStorage.setItem(SESSION_KEY, id); } catch (e) { /* 会话仍在内存中隔离 */ }
+    return id;
+  }
+
+  function notifyEnd(id) {
+    if (!id) return;
+    // 清屏不等待网络；即使通知失败，新会话也不会再次使用旧编号。
+    fetch('/api/voice/session/end', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ session_id: id, device_id: window.GuideKiosk.deviceId }),
+    }).catch(() => {});
+  }
+
+  function touch(activate = false) {
+    if (activate) active = true;
+    if (!active) return;
+    idleDeadline = Date.now() + IDLE_MS;
+    $('privacyCountdown').hidden = true;
+  }
+
+  function checkIdle() {
+    if (!active) return;
+    if (listening || speaking) {
+      idleDeadline = Date.now() + IDLE_MS;
+      $('privacyCountdown').hidden = true;
+      return;
+    }
+    const remaining = idleDeadline - Date.now();
+    if (remaining <= 0) {
+      endSession();
+    } else if (remaining <= WARNING_MS) {
+      $('privacyCountdownText').textContent = `为保护隐私，${Math.ceil(remaining / 1000)} 秒后清除本次屏幕内容。`;
+      $('privacyCountdown').hidden = false;
+    }
+  }
+
+  function stopSpeech() {
+    clearTimeout(speechTimer);
+    if (utterance) utterance.onstart = utterance.onend = utterance.onerror = null;
+    utterance = null;
+    speaking = false;
+    if (window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch (e) { /* 停止失败也不得恢复旧会话 */ }
+    }
+  }
+
+  function clearScreen() {
+    const welcome = document.createElement('div');
+    welcome.className = 'hint';
+    welcome.textContent = WELCOME_TEXT;
+    body.replaceChildren(welcome);
+    body.scrollTop = 0;
+    barInput.value = '';
+    askInput.value = '';
+    $('disclaimer').textContent = '';
+    $('privacyCountdown').hidden = true;
+    $('privacyCountdownText').textContent = '';
+  }
+
+  function endSession(showNotice = true) {
+    const oldId = sessionId;
+    const hadConsultation = active;
+    generation += 1;
+    active = false;
+    idleDeadline = 0;
+    requests.forEach((controller) => controller.abort());
+    requests.clear();
+    clearTimeout(pressTimer);
+    pressTimer = null;
+    stopListen(true);
+    stopSpeech();
+    clearScreen();
+    drawer.hidden = true;
+    clearTimeout(toastTimer);
+    $('toast').hidden = true;
+    sessionId = newSessionId();
+    if (hadConsultation) notifyEnd(oldId);
+    if (showNotice) toast('本次咨询已结束，屏幕内容已清除。');
+  }
 
   // ── 小工具 ──
   let toastTimer = null;
@@ -28,8 +120,8 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { t.hidden = true; }, ms);
   }
-  function openDrawer() { drawer.hidden = false; }
-  function closeDrawer() { drawer.hidden = true; stopListen(); }
+  function openDrawer() { checkIdle(); drawer.hidden = false; touch(true); }
+  function closeDrawer() { endSession(); }
   function scrollDown() { body.scrollTop = body.scrollHeight; }
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -104,14 +196,38 @@
   }
 
   function speak(text) {
+    stopSpeech();
     if (!window.speechSynthesis || !text) return;
+    const currentGeneration = generation;
     try {
-      speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
+      utterance = u;
       u.lang = 'zh-CN';
       u.rate = 1.0;
-      speechSynthesis.speak(u);
-    } catch (e) { /* 播报失败不影响阅读 */ }
+      // 只有浏览器实际开始播报才延后清理。排队/被禁止的播报不能暂停倒计时。
+      u.onstart = () => {
+        if (generation !== currentGeneration || utterance !== u || !active) return;
+        speaking = true;
+        touch();
+      };
+      const finished = () => {
+        if (generation !== currentGeneration || utterance !== u) return;
+        clearTimeout(speechTimer);
+        utterance = null;
+        const wasSpeaking = speaking;
+        speaking = false;
+        if (wasSpeaking) touch();
+      };
+      u.onend = u.onerror = finished;
+      // 浏览器漏报结束事件时也不能无限期保留屏幕内容。
+      speechTimer = setTimeout(() => {
+        if (generation !== currentGeneration || utterance !== u) return;
+        const wasSpeaking = speaking;
+        stopSpeech();
+        if (wasSpeaking) touch();
+      }, 120_000);
+      window.speechSynthesis.speak(u);
+    } catch (e) { stopSpeech(); touch(); }
   }
 
   // ── 提问 ──
@@ -119,6 +235,11 @@
     const clean = (text || '').trim();
     if (!clean) return;
     openDrawer();
+    stopSpeech();
+    const currentGeneration = generation;
+    const currentSession = sessionId;
+    const controller = new AbortController();
+    requests.add(controller);
     bubble('user', escapeHtml(clean));
     barInput.value = '';
     askInput.value = '';
@@ -126,12 +247,20 @@
       const resp = await fetch('/api/voice/turn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, text: clean, device_id: window.GuideKiosk.deviceId }),
+        signal: controller.signal,
+        body: JSON.stringify({ session_id: currentSession, text: clean, device_id: window.GuideKiosk.deviceId }),
       });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      renderAnswer(await resp.json());
+      const data = await resp.json();
+      if (generation !== currentGeneration || !active) return;
+      touch();
+      renderAnswer(data);
     } catch (e) {
+      if (generation !== currentGeneration || !active || e.name === 'AbortError') return;
       bubble('bot', '网络异常，请稍后再试或咨询导医台。');
+      touch();
+    } finally {
+      requests.delete(controller);
     }
   }
 
@@ -166,14 +295,22 @@
       barInput.focus();
       return;
     }
-    recog = new SR();
-    recog.lang = 'zh-CN';
-    recog.continuous = false;     // 说完自动结束，不需要长按
-    recog.interimResults = true;
-    recog.maxAlternatives = 1;
+    openDrawer();
+    stopSpeech();
+    stopListen(true);
+    const currentGeneration = generation;
+    const recognition = new SR();
+    recog = recognition;
+    const isCurrent = () => generation === currentGeneration && recog === recognition;
+    recognition.lang = 'zh-CN';
+    recognition.continuous = false;     // 说完自动结束，不需要长按
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
 
-    recog.onstart = () => setListening(true);
-    recog.onresult = (ev) => {
+    recognition.onstart = () => { if (isCurrent()) setListening(true); };
+    recognition.onresult = (ev) => {
+      if (!isCurrent()) return;
+      touch();
       let finalText = '';
       let interim = '';
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
@@ -195,22 +332,47 @@
         }
       }
     };
-    recog.onerror = (ev) => {
+    recognition.onerror = (ev) => {
+      if (!isCurrent()) return;
+      clearTimeout(recognitionTimer);
       setListening(false);
+      touch();
       toast(errText(ev.error));
       if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') barInput.focus();
     };
-    recog.onend = () => setListening(false);
-    try {
-      recog.start();
-    } catch (e) {
+    recognition.onend = () => {
+      if (!isCurrent()) return;
+      clearTimeout(recognitionTimer);
+      recog = null;
       setListening(false);
+      touch();
+    };
+    try {
+      setListening(true);
+      recognitionTimer = setTimeout(() => {
+        if (!isCurrent()) return;
+        stopListen(true);
+        touch();
+        toast('本次语音识别已结束，可重新点击语音或打字提问。');
+      }, 30_000);
+      recognition.start();
+    } catch (e) {
+      stopListen(true);
+      touch();
       toast('无法启动语音识别，请直接打字提问');
     }
   }
 
-  function stopListen() {
-    if (recog) { try { recog.stop(); } catch (e) { /* ignore */ } }
+  function stopListen(discard = false) {
+    if (recog) {
+      const recognition = recog;
+      if (discard) {
+        recog = null;
+        recognition.onstart = recognition.onresult = recognition.onerror = recognition.onend = null;
+        clearTimeout(recognitionTimer);
+      }
+      try { if (discard) recognition.abort(); else recognition.stop(); } catch (e) { /* ignore */ }
+    }
     setListening(false);
   }
 
@@ -240,8 +402,28 @@
   $('askBarForm').addEventListener('submit', (e) => { e.preventDefault(); submit(barInput.value); });
   $('askForm').addEventListener('submit', (e) => { e.preventDefault(); submit(askInput.value); });
   $('closeDrawer').addEventListener('click', closeDrawer);
+  $('endSession').addEventListener('click', () => endSession());
+  $('endSessionNow').addEventListener('click', () => endSession());
+  $('continueSession').addEventListener('click', () => { checkIdle(); if (active) touch(); });
+  [barInput, askInput].forEach((input) => input.addEventListener('input', () => {
+    checkIdle();
+    if (input.value.trim()) touch(true);
+    else touch();
+  }));
+  ['pointerdown', 'keydown', 'wheel', 'touchmove'].forEach((name) => {
+    document.addEventListener(name, () => { checkIdle(); touch(); }, { passive: true });
+  });
+  window.addEventListener('focus', checkIdle);
+  document.addEventListener('visibilitychange', checkIdle);
+  window.addEventListener('pagehide', () => endSession(false));
+  window.addEventListener('pageshow', checkIdle);
+  setInterval(checkIdle, 250);
 
   window.Voice = { submit, open: openDrawer, close: closeDrawer, listen: toggleListen };
+
+  // 刷新/恢复页面也从空白新会话开始，不能只清画面却继承旧患者上下文。
+  clearScreen();
+  if (previousSession) notifyEnd(previousSession);
 
   if (!SR) {
     setListening(false, '当前浏览器不支持语音识别，可点输入框打字提问（功能不受影响）');

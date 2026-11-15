@@ -48,7 +48,10 @@
 <div class="drawer" id="drawer" hidden>
   <div class="drawer-head">
     <span class="drawer-title">语音导诊</span>
-    <button class="icon-btn" id="closeDrawer" aria-label="关闭">✕</button>
+    <div class="drawer-head-actions">
+      <button class="end-session" id="endSession" type="button">结束咨询</button>
+      <button class="icon-btn" id="closeDrawer" type="button" aria-label="结束并清除本次咨询" title="结束并清除屏幕内容">✕</button>
+    </div>
   </div>
   <div class="drawer-body" id="drawerBody">
     <div class="hint">可以这样问：「心内科在几楼」「今天有哪些科室出诊」「张明医生什么时候坐诊」</div>
@@ -61,8 +64,14 @@
     <button type="submit">发送</button>
   </form>
   <div class="disclaimer" id="disclaimer"></div>
+  <div class="privacy-note">咨询结束请点击「结束咨询」。闲置 60 秒后自动清除本次屏幕内容。</div>
 </div>
 
+<div class="privacy-countdown" id="privacyCountdown" hidden role="status" aria-live="polite">
+  <span id="privacyCountdownText"></span>
+  <button id="continueSession" type="button">继续咨询</button>
+  <button id="endSessionNow" class="clear-now" type="button">立即结束</button>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script src="app.js"></script>

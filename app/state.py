@@ -267,18 +267,44 @@ def add_badcase(query_text: str, reason: str, expected: str, actual: str) -> Non
 
 
 def save_session(session_id: str, device_id: str, last_intent: str,
-                 last_dept_id: str | None, last_doctor_id: str | None) -> None:
-    execute(
-        "INSERT OR REPLACE INTO session(id, device_id, created_at, expires_at, last_intent,"
-        " last_dept_id, last_doctor_id) VALUES (?,?,?,?,?,?,?)",
-        (session_id, device_id, now_ms(), now_ms() + 30 * 60 * 1000, last_intent,
-         last_dept_id or "", last_doctor_id or ""),
-    )
+                 last_dept_id: str | None, last_doctor_id: str | None) -> bool:
+    with tx() as c:
+        updated = c.execute(
+            "INSERT INTO session(id, device_id, created_at, expires_at, last_intent,"
+            " last_dept_id, last_doctor_id) VALUES (?,?,?,?,?,?,?)"
+            " ON CONFLICT(id) DO UPDATE SET expires_at=excluded.expires_at,"
+            " last_intent=excluded.last_intent,last_dept_id=excluded.last_dept_id,"
+            " last_doctor_id=excluded.last_doctor_id"
+            " WHERE session.expires_at > 0 AND session.device_id=excluded.device_id",
+            (session_id, device_id, now_ms(), now_ms() + 30 * 60 * 1000, last_intent,
+             last_dept_id or "", last_doctor_id or ""),
+        )
+        return updated.rowcount > 0
 
 
-def load_session(session_id: str) -> dict | None:
+def load_session(session_id: str, device_id: str | None = None) -> dict | None:
     row = one("SELECT * FROM session WHERE id=? AND expires_at > ?", (session_id, now_ms()))
+    if row and device_id is not None and row["device_id"] != device_id:
+        return None
     return dict(row) if row else None
+
+
+def session_accepts_turn(session_id: str, device_id: str) -> bool:
+    row = one("SELECT device_id,expires_at FROM session WHERE id=?", (session_id,))
+    return row is None or (row["device_id"] == device_id and row["expires_at"] > 0)
+
+
+def end_session(session_id: str, device_id: str) -> bool:
+    """清除上下文并保留结束标记，阻止在途请求重新保存旧会话。"""
+    with tx() as c:
+        updated = c.execute(
+            "INSERT INTO session(id,device_id,created_at,expires_at,last_intent,last_dept_id,last_doctor_id)"
+            " VALUES (?,?,?,0,'','','') ON CONFLICT(id) DO UPDATE SET"
+            " expires_at=0,last_intent='',last_dept_id='',last_doctor_id=''"
+            " WHERE session.device_id=excluded.device_id",
+            (session_id, device_id, now_ms()),
+        )
+        return updated.rowcount > 0
 
 
 # ─────────────────────────── 头像 ───────────────────────────

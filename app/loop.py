@@ -32,7 +32,14 @@ from .schemas import (
 from .settings import settings
 from .schedule.view import day_slots
 
-_TURN_CACHE: dict[str, list[str]] = {}
+_TURN_CACHE: dict[tuple[str, str], tuple[int, list[str]]] = {}
+
+
+def end_conversation(session_id: str, device_id: str) -> bool:
+    closed = state.end_session(session_id, device_id)
+    if closed:
+        _TURN_CACHE.pop((device_id, session_id), None)
+    return closed
 
 
 def _fp(intent: str, slots: Slots) -> str:
@@ -60,27 +67,45 @@ async def handle_turn(input_: TurnInput, ctx: TurnContext) -> TurnOutput:
         return _wrap(answer_id, IntentKind.OUT_OF_SCOPE, "我没有听清，请再说一次。",
                      degraded=False, path="fallback", started=started)
 
-    session = state.load_session(input_.session_id) if input_.session_id else None
+    def ended_answer() -> TurnOutput:
+        return _wrap(answer_id, IntentKind.OUT_OF_SCOPE, "本次咨询已结束，请重新开始咨询。",
+                     degraded=False, path="fallback", started=started)
+
+    if input_.session_id and not state.session_accepts_turn(input_.session_id, input_.device_id):
+        return ended_answer()
+    session = state.load_session(input_.session_id, input_.device_id) if input_.session_id else None
+    cache_key = (input_.device_id, input_.session_id or "")
 
     try:
         async with asyncio.timeout(float(settings.limits.get("turn_timeout_ms", 6000)) / 1000):
             intent, slots, path = await intent_mod.classify(raw, session)#返回意图、槽位、路径
 
+            if input_.session_id and not state.session_accepts_turn(input_.session_id, input_.device_id):
+                return ended_answer()
+
             # 打转检测：同指纹连续 2 次 → 打断
             fp = _fp(intent.value, slots)
-            hist = _TURN_CACHE.setdefault(input_.device_id, [])
+            now = now_ms()
+            for key, (expires_at, _) in list(_TURN_CACHE.items()):
+                if expires_at <= now:
+                    _TURN_CACHE.pop(key, None)
+            hist = _TURN_CACHE.get(cache_key, (0, []))[1]
             if len(hist) >= 2 and hist[-1] == hist[-2] == fp:
                 return _wrap(answer_id, intent, "这个问题我暂时查不到更准确的信息，建议咨询导医台。",
                              degraded=False, path="fallback", started=started, reason="LOOP_GUARD")
             hist.append(fp)
             del hist[:-6]
+            _TURN_CACHE[cache_key] = (now + 30 * 60 * 1000, hist)
 
             out = await _execute(answer_id, intent, slots, path, raw, ctx, started)
 
-        state.save_session(
+        saved = state.save_session(
             input_.session_id or answer_id, input_.device_id, intent.value,
             slots.department_id, slots.doctor_id,
         )
+        if not saved:
+            _TURN_CACHE.pop(cache_key, None)
+            return ended_answer()
         state.log_query(input_.session_id, raw, intent.value, slots.model_dump(), path,
                         out.latency.model_dump())
         state.save_answer(answer_id, intent.value, out.display_text,

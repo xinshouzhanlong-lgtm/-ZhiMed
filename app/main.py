@@ -2,6 +2,7 @@
 
 路由分组：
   /api/voice/turn            患者语音问答单轮
+  /api/voice/session/end     结束患者咨询、清除上下文
   /api/schedule/today        今日排班（四态决策后）
   /api/departments/{id}      科室详情
   /api/media/doctors/{name}  头像出图（匿名可读，仅按 hash 精确匹配）
@@ -19,7 +20,6 @@ from typing import Any
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
 
 from . import deps, state
 from .auth import password as password_auth
@@ -32,6 +32,7 @@ from .runtime import breaker, build_runtime, doctor_api, registry, schedule_api,
 from .schemas import MdPatchSource, Principal, TurnContext, TurnInput
 from .settings import ROOT, settings
 from .schedule.view import day_slots
+from .web import AppStaticFiles
 
 # ─────────────────────────── 启动 ───────────────────────────
 
@@ -89,6 +90,20 @@ async def voice_turn(payload: TurnInput) -> dict[str, Any]:
     )
     out = await handle_turn(payload, ctx)
     return out.model_dump(by_alias=True)
+
+
+class SessionEnd(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128)
+    device_id: str = Field(min_length=1, max_length=128)
+
+
+@app.post("/api/voice/session/end")
+async def end_voice_session(payload: SessionEnd) -> dict[str, bool]:
+    from .loop import end_conversation
+
+    if not end_conversation(payload.session_id, payload.device_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"ok": True}
 
 
 class KnowledgeQuestion(BaseModel):
@@ -393,8 +408,8 @@ async def asr_placeholder() -> dict[str, Any]:
 
 # ─────────────────────────── 静态资源 ───────────────────────────
 
-app.mount("/kiosk", StaticFiles(directory=ROOT / "web" / "kiosk", html=True), name="kiosk")
-app.mount("/admin", StaticFiles(directory=ROOT / "web" / "admin", html=True), name="admin")
+app.mount("/kiosk", AppStaticFiles(directory=ROOT / "web" / "kiosk", html=True), name="kiosk")
+app.mount("/admin", AppStaticFiles(directory=ROOT / "web" / "admin", html=True), name="admin")
 
 
 @app.get("/")
